@@ -48,6 +48,22 @@ available under `/api/v1/tasks`.
 
 ## Quality checks
 
+Create and migrate a separate test database. This command is needed once for a
+new PostgreSQL volume:
+
+```bash
+docker compose exec postgres createdb -U ai_calendar ai_calendar_test
+```
+
+Export the dedicated test URL and apply migrations to that database:
+
+```bash
+export TEST_DATABASE_URL="postgresql+psycopg://ai_calendar:ai_calendar@localhost:5432/ai_calendar_test"
+DATABASE_URL="$TEST_DATABASE_URL" alembic upgrade head
+```
+
+Then run all checks:
+
 ```bash
 source .venv/bin/activate
 pytest
@@ -56,8 +72,10 @@ ruff format --check .
 mypy app tests
 ```
 
-Integration tests use the PostgreSQL database configured by `DATABASE_URL` and
-must run only against a disposable development/test database.
+Integration tests require `TEST_DATABASE_URL` and never fall back to
+`DATABASE_URL`. They refuse to start unless the URL uses PostgreSQL and its
+database name starts with `test_` or ends with `_test`. Test cleanup therefore
+cannot target the normal `ai_calendar` development database.
 
 ## Migrations
 

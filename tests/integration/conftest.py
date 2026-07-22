@@ -1,19 +1,48 @@
+import os
 import uuid
 from collections.abc import Generator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete
-from sqlalchemy.orm import Session
+from sqlalchemy import create_engine, delete
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import Session, sessionmaker
 
-from app.core.database import SessionLocal, get_db
+from app.core.database import get_db
 from app.main import app
 from app.models import Task, User, UserPreferences
 
 
+def require_test_database_url() -> str:
+    database_url = os.environ.get("TEST_DATABASE_URL")
+    if not database_url:
+        raise pytest.UsageError(
+            "Integration tests require TEST_DATABASE_URL; DATABASE_URL is never used."
+        )
+
+    url = make_url(database_url)
+    database_name = url.database or ""
+    is_test_database = database_name.startswith("test_") or database_name.endswith(
+        "_test"
+    )
+    if not is_test_database:
+        raise pytest.UsageError(
+            "TEST_DATABASE_URL must target a database whose name starts with "
+            f"'test_' or ends with '_test'; got {database_name!r}."
+        )
+    if not url.drivername.startswith("postgresql"):
+        raise pytest.UsageError("Integration tests require a PostgreSQL database.")
+
+    return database_url
+
+
+test_engine = create_engine(require_test_database_url(), pool_pre_ping=True)
+TestSessionLocal = sessionmaker(bind=test_engine, expire_on_commit=False)
+
+
 @pytest.fixture
 def db_session() -> Generator[Session, None, None]:
-    with SessionLocal() as session:
+    with TestSessionLocal() as session:
         session.execute(delete(Task))
         session.execute(delete(UserPreferences))
         session.execute(delete(User))
