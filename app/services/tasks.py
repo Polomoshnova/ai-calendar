@@ -39,7 +39,21 @@ def update_task(session: Session, task: Task, data: TaskUpdate) -> Task:
     duration = updates.get("duration_minutes", task.duration_minutes)
     earliest_start = updates.get("earliest_start", task.earliest_start)
     deadline = updates.get("deadline", task.deadline)
-    validate_task(duration, earliest_start, deadline)
+    is_splittable = updates.get("is_splittable", task.is_splittable)
+    minimum_session = updates.get(
+        "minimum_session_minutes", task.minimum_session_minutes
+    )
+    maximum_sessions = updates.get(
+        "maximum_sessions_per_day", task.maximum_sessions_per_day
+    )
+    validate_task(
+        duration,
+        earliest_start,
+        deadline,
+        is_splittable=is_splittable,
+        minimum_session_minutes=minimum_session,
+        maximum_sessions_per_day=maximum_sessions,
+    )
 
     for field, value in updates.items():
         setattr(task, field, value)

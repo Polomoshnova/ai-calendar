@@ -25,3 +25,8 @@ def test_valid_iana_timezone() -> None:
 def test_invalid_iana_timezone() -> None:
     with pytest.raises(ValueError, match="valid IANA timezone"):
         validate_timezone("Mars/Olympus_Mons")
+
+
+def test_task_datetimes_must_be_timezone_aware() -> None:
+    with pytest.raises(ValueError, match="timezone-aware"):
+        validate_task(30, datetime(2026, 7, 22), None)

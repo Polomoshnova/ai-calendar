@@ -1,8 +1,9 @@
 # AI Calendar API
 
 Product foundation for an AI-assisted task scheduler. This milestone contains task
-management and PostgreSQL persistence only; calendar, AI, authentication,
-background jobs, and scheduling are deliberately out of scope.
+management, PostgreSQL persistence, and a pure deterministic scheduling core.
+Calendar providers, AI, authentication, background jobs, plan persistence, and
+calendar writes are deliberately out of scope.
 
 ## Prerequisites
 
@@ -45,6 +46,38 @@ uvicorn app.main:app --reload
 
 Open <http://127.0.0.1:8000/docs> for the API documentation. Task endpoints are
 available under `/api/v1/tasks`.
+
+## Working hours
+
+Working hours are stored as IANA-local wall-clock times with all seven weekdays
+present. An empty list means that weekday is unavailable:
+
+```json
+{
+  "monday": [{"start": "09:00", "end": "18:00"}],
+  "tuesday": [{"start": "09:00", "end": "18:00"}],
+  "wednesday": [{"start": "09:00", "end": "18:00"}],
+  "thursday": [{"start": "09:00", "end": "18:00"}],
+  "friday": [{"start": "09:00", "end": "18:00"}],
+  "saturday": [],
+  "sunday": []
+}
+```
+
+`User.timezone` is the only timezone authority. Working-hour values do not carry
+offsets; the availability engine resolves them in that IANA timezone for each
+date, including DST transitions.
+
+## Deterministic scheduler demonstration
+
+Run a fixed, realistic example without a database or API:
+
+```bash
+python -m app.scheduling.demo
+```
+
+The command prints normalized free intervals, scheduled blocks, structured reason
+codes and scores, unscheduled tasks, warnings, and the scheduler version.
 
 ## Quality checks
 

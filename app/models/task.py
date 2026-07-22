@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     Enum,
@@ -16,7 +17,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.core.database import Base
-from app.domain.tasks import TaskPriority, TaskStatus
+from app.domain.tasks import PreferredTimeOfDay, TaskPriority, TaskStatus
 
 if TYPE_CHECKING:
     from app.models.user import User
@@ -26,6 +27,18 @@ class Task(Base):
     __tablename__ = "tasks"
     __table_args__ = (
         CheckConstraint("duration_minutes > 0", name="ck_tasks_positive_duration"),
+        CheckConstraint(
+            "minimum_session_minutes > 0",
+            name="ck_tasks_positive_minimum_session",
+        ),
+        CheckConstraint(
+            "maximum_sessions_per_day > 0",
+            name="ck_tasks_positive_maximum_sessions",
+        ),
+        CheckConstraint(
+            "NOT is_splittable OR minimum_session_minutes <= duration_minutes",
+            name="ck_tasks_splittable_minimum_session",
+        ),
         CheckConstraint(
             "earliest_start IS NULL OR deadline IS NULL OR earliest_start < deadline",
             name="ck_tasks_valid_window",
@@ -46,6 +59,13 @@ class Task(Base):
     priority: Mapped[TaskPriority] = mapped_column(
         Enum(TaskPriority, name="task_priority"), default=TaskPriority.medium
     )
+    preferred_time_of_day: Mapped[PreferredTimeOfDay] = mapped_column(
+        Enum(PreferredTimeOfDay, name="preferred_time_of_day"),
+        default=PreferredTimeOfDay.any,
+    )
+    is_splittable: Mapped[bool] = mapped_column(Boolean, default=False)
+    minimum_session_minutes: Mapped[int] = mapped_column(Integer, default=15)
+    maximum_sessions_per_day: Mapped[int] = mapped_column(Integer, default=1)
     status: Mapped[TaskStatus] = mapped_column(
         Enum(TaskStatus, name="task_status"), default=TaskStatus.pending
     )

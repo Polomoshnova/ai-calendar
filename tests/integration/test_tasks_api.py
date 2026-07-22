@@ -28,6 +28,10 @@ def test_task_crud(client: TestClient, user: User) -> None:
     assert created["user_id"] == str(user.id)
     assert created["priority"] == "high"
     assert created["status"] == "pending"
+    assert created["preferred_time_of_day"] == "any"
+    assert created["is_splittable"] is False
+    assert created["minimum_session_minutes"] == 15
+    assert created["maximum_sessions_per_day"] == 1
 
     list_response = client.get("/api/v1/tasks", params={"user_id": USER_ID})
     assert list_response.status_code == 200
@@ -71,6 +75,15 @@ def test_create_rejects_invalid_time_window(client: TestClient, user: User) -> N
 def test_create_rejects_invalid_priority(client: TestClient, user: User) -> None:
     response = client.post(
         "/api/v1/tasks", json=task_payload(priority="extremely-important")
+    )
+
+    assert response.status_code == 422
+
+
+def test_create_rejects_naive_task_datetime(client: TestClient, user: User) -> None:
+    response = client.post(
+        "/api/v1/tasks",
+        json=task_payload(earliest_start="2026-07-23T08:00:00"),
     )
 
     assert response.status_code == 422

@@ -29,7 +29,7 @@ class User(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    preferences: Mapped["UserPreferences"] = relationship(
+    preferences: Mapped["UserPreferences | None"] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
     tasks: Mapped[list["Task"]] = relationship(
