@@ -79,6 +79,35 @@ python -m app.scheduling.demo
 The command prints normalized free intervals, scheduled blocks, structured reason
 codes and scores, unscheduled tasks, warnings, and the scheduler version.
 
+## Stateless schedule preview
+
+`POST /api/v1/scheduling/preview` loads pending tasks and preferences for a user,
+combines them with temporary busy intervals, and returns an in-memory scheduling
+proposal. The endpoint never creates plans, blocks, audit events, or cache rows.
+
+The planning window is limited to 31 days. All input datetimes must include a UTC
+offset. If a user has no `UserPreferences` row, the service uses Monday–Friday
+09:00–18:00 working hours, no minimum break, no cutoff, and a 15-minute default
+minimum session without writing those defaults to the database.
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/scheduling/preview \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "user_id": "11111111-1111-1111-1111-111111111111",
+    "planning_window": {
+      "start": "2026-07-20T08:00:00Z",
+      "end": "2026-07-20T18:00:00Z"
+    },
+    "busy_intervals": [
+      {
+        "start": "2026-07-20T12:00:00Z",
+        "end": "2026-07-20T13:00:00Z"
+      }
+    ]
+  }'
+```
+
 ## Quality checks
 
 Create and migrate a separate test database. This command is needed once for a

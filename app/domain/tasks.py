@@ -12,6 +12,7 @@ class TaskPriority(StrEnum):
 class TaskStatus(StrEnum):
     pending = "pending"
     completed = "completed"
+    cancelled = "cancelled"
 
 
 class PreferredTimeOfDay(StrEnum):

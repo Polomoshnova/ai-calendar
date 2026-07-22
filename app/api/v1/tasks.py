@@ -1,16 +1,15 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
+from app.api.dependencies import DatabaseSession
 from app.models import Task
 from app.schemas.task import TaskCreate, TaskRead, TaskUpdate
 from app.services import tasks as task_service
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
-DatabaseSession = Annotated[Session, Depends(get_db)]
 
 
 def require_task(session: Session, task_id: uuid.UUID) -> Task:
