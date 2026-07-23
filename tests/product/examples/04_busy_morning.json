@@ -1,0 +1,32 @@
+{
+  "name": "Busy morning",
+  "description": "Meetings occupy the morning, forcing focused work into the afternoon.",
+  "planning_window": {"start": "2026-07-20T08:00:00Z", "end": "2026-07-20T18:00:00Z"},
+  "user_preferences": {
+    "timezone": "UTC",
+    "working_hours": {
+      "monday": [{"start": "09:00", "end": "18:00"}],
+      "tuesday": [{"start": "09:00", "end": "18:00"}],
+      "wednesday": [{"start": "09:00", "end": "18:00"}],
+      "thursday": [{"start": "09:00", "end": "18:00"}],
+      "friday": [{"start": "09:00", "end": "18:00"}],
+      "saturday": [],
+      "sunday": []
+    },
+    "preferred_task_time": "morning",
+    "minimum_break_minutes": 15,
+    "no_deep_work_after": null,
+    "default_minimum_session_minutes": 30
+  },
+  "busy_intervals": [
+    {"start": "2026-07-20T09:00:00Z", "end": "2026-07-20T12:30:00Z"}
+  ],
+  "tasks": [
+    {"id": "research", "title": "Research customer problem", "duration_minutes": 90, "priority": "high", "preferred_time_of_day": "morning"}
+  ],
+  "expected_observations": [
+    "The busy morning must remain untouched.",
+    "The task may lose its morning preference but should still be scheduled if possible.",
+    "Reason codes should not claim a morning preference was satisfied when it was not."
+  ]
+}

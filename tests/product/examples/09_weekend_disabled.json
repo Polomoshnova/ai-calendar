@@ -1,0 +1,30 @@
+{
+  "name": "Weekend disabled",
+  "description": "A Saturday planning window is unavailable according to working hours.",
+  "planning_window": {"start": "2026-07-25T08:00:00Z", "end": "2026-07-25T18:00:00Z"},
+  "user_preferences": {
+    "timezone": "UTC",
+    "working_hours": {
+      "monday": [{"start": "09:00", "end": "18:00"}],
+      "tuesday": [{"start": "09:00", "end": "18:00"}],
+      "wednesday": [{"start": "09:00", "end": "18:00"}],
+      "thursday": [{"start": "09:00", "end": "18:00"}],
+      "friday": [{"start": "09:00", "end": "18:00"}],
+      "saturday": [],
+      "sunday": []
+    },
+    "preferred_task_time": "morning",
+    "minimum_break_minutes": 15,
+    "no_deep_work_after": null,
+    "default_minimum_session_minutes": 15
+  },
+  "busy_intervals": [],
+  "tasks": [
+    {"id": "weekend-task", "title": "Prepare Monday agenda", "duration_minutes": 60, "priority": "medium"}
+  ],
+  "expected_observations": [
+    "No Saturday block should be generated.",
+    "The task should be explicitly unscheduled.",
+    "The reason should indicate restrictive working hours."
+  ]
+}

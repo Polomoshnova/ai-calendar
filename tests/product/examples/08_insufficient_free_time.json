@@ -1,0 +1,33 @@
+{
+  "name": "Insufficient free time",
+  "description": "A full-day task cannot fit into the remaining working hours.",
+  "planning_window": {"start": "2026-07-20T08:00:00Z", "end": "2026-07-20T18:00:00Z"},
+  "user_preferences": {
+    "timezone": "UTC",
+    "working_hours": {
+      "monday": [{"start": "09:00", "end": "18:00"}],
+      "tuesday": [{"start": "09:00", "end": "18:00"}],
+      "wednesday": [{"start": "09:00", "end": "18:00"}],
+      "thursday": [{"start": "09:00", "end": "18:00"}],
+      "friday": [{"start": "09:00", "end": "18:00"}],
+      "saturday": [],
+      "sunday": []
+    },
+    "preferred_task_time": "any",
+    "minimum_break_minutes": 15,
+    "no_deep_work_after": null,
+    "default_minimum_session_minutes": 30
+  },
+  "busy_intervals": [
+    {"start": "2026-07-20T10:00:00Z", "end": "2026-07-20T12:00:00Z"},
+    {"start": "2026-07-20T15:00:00Z", "end": "2026-07-20T17:00:00Z"}
+  ],
+  "tasks": [
+    {"id": "annual-plan", "title": "Complete annual operating plan", "duration_minutes": 600, "priority": "urgent", "deadline": "2026-07-20T18:00:00Z"}
+  ],
+  "expected_observations": [
+    "The task should be returned as unscheduled.",
+    "The system must not place work over busy intervals or outside working hours.",
+    "The remaining duration and reason should be visible for follow-up."
+  ]
+}

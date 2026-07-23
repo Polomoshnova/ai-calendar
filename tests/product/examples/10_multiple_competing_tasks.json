@@ -1,0 +1,38 @@
+{
+  "name": "Multiple competing tasks",
+  "description": "Several tasks with mixed urgency, deadlines, and preferences compete for one day.",
+  "planning_window": {"start": "2026-07-20T08:00:00Z", "end": "2026-07-20T18:00:00Z"},
+  "user_preferences": {
+    "timezone": "UTC",
+    "working_hours": {
+      "monday": [{"start": "09:00", "end": "18:00"}],
+      "tuesday": [{"start": "09:00", "end": "18:00"}],
+      "wednesday": [{"start": "09:00", "end": "18:00"}],
+      "thursday": [{"start": "09:00", "end": "18:00"}],
+      "friday": [{"start": "09:00", "end": "18:00"}],
+      "saturday": [],
+      "sunday": []
+    },
+    "preferred_task_time": "morning",
+    "minimum_break_minutes": 15,
+    "no_deep_work_after": "17:00",
+    "default_minimum_session_minutes": 30
+  },
+  "busy_intervals": [
+    {"start": "2026-07-20T11:30:00Z", "end": "2026-07-20T12:30:00Z"},
+    {"start": "2026-07-20T15:00:00Z", "end": "2026-07-20T16:00:00Z"}
+  ],
+  "tasks": [
+    {"id": "incident-review", "title": "Write incident review", "duration_minutes": 90, "priority": "urgent", "deadline": "2026-07-20T14:00:00Z", "preferred_time_of_day": "morning"},
+    {"id": "customer-analysis", "title": "Analyze customer interviews", "duration_minutes": 120, "priority": "high", "deadline": "2026-07-20T18:00:00Z", "is_splittable": true, "minimum_session_minutes": 60, "maximum_sessions_per_day": 2},
+    {"id": "team-update", "title": "Draft team update", "duration_minutes": 45, "priority": "medium", "preferred_time_of_day": "afternoon"},
+    {"id": "expense-report", "title": "Submit expense report", "duration_minutes": 30, "priority": "low"}
+  ],
+  "expected_observations": [
+    "The urgent incident review should receive early capacity.",
+    "The customer analysis may split only when necessary and should use meaningful sessions.",
+    "Minimum breaks should separate product-managed task blocks.",
+    "Lower-priority work may remain unscheduled if capacity runs out.",
+    "No generated block should extend beyond the 17:00 cutoff."
+  ]
+}

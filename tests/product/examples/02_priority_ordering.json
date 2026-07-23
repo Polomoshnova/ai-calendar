@@ -1,0 +1,31 @@
+{
+  "name": "Priority ordering",
+  "description": "Two tasks compete for one hour; the urgent task should receive it.",
+  "planning_window": {"start": "2026-07-20T09:00:00Z", "end": "2026-07-20T10:00:00Z"},
+  "user_preferences": {
+    "timezone": "UTC",
+    "working_hours": {
+      "monday": [{"start": "09:00", "end": "18:00"}],
+      "tuesday": [{"start": "09:00", "end": "18:00"}],
+      "wednesday": [{"start": "09:00", "end": "18:00"}],
+      "thursday": [{"start": "09:00", "end": "18:00"}],
+      "friday": [{"start": "09:00", "end": "18:00"}],
+      "saturday": [],
+      "sunday": []
+    },
+    "preferred_task_time": "any",
+    "minimum_break_minutes": 0,
+    "no_deep_work_after": null,
+    "default_minimum_session_minutes": 15
+  },
+  "busy_intervals": [],
+  "tasks": [
+    {"id": "urgent-fix", "title": "Resolve production issue", "duration_minutes": 60, "priority": "urgent"},
+    {"id": "backlog-cleanup", "title": "Clean up backlog", "duration_minutes": 60, "priority": "low"}
+  ],
+  "expected_observations": [
+    "The urgent production issue should be scheduled first.",
+    "The low-priority task should be returned as unscheduled rather than dropped.",
+    "The result should clearly state why only one task fit."
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "name": "Single task",
+  "description": "A focused morning task should fit comfortably before its deadline.",
+  "planning_window": {"start": "2026-07-20T08:00:00Z", "end": "2026-07-20T18:00:00Z"},
+  "user_preferences": {
+    "timezone": "UTC",
+    "working_hours": {
+      "monday": [{"start": "09:00", "end": "18:00"}],
+      "tuesday": [{"start": "09:00", "end": "18:00"}],
+      "wednesday": [{"start": "09:00", "end": "18:00"}],
+      "thursday": [{"start": "09:00", "end": "18:00"}],
+      "friday": [{"start": "09:00", "end": "18:00"}],
+      "saturday": [],
+      "sunday": []
+    },
+    "preferred_task_time": "morning",
+    "minimum_break_minutes": 15,
+    "no_deep_work_after": null,
+    "default_minimum_session_minutes": 15
+  },
+  "busy_intervals": [],
+  "tasks": [
+    {
+      "id": "release-notes",
+      "title": "Prepare release notes",
+      "duration_minutes": 90,
+      "priority": "high",
+      "deadline": "2026-07-20T17:00:00Z",
+      "preferred_time_of_day": "morning"
+    }
+  ],
+  "expected_observations": [
+    "The task should be scheduled as one contiguous block.",
+    "The morning preference should be visible in the reason codes.",
+    "The task should finish with meaningful buffer before the deadline."
+  ]
+}
