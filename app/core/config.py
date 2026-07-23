@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     database_url: str = (
         "postgresql+psycopg://ai_calendar:ai_calendar@localhost:5432/ai_calendar"
     )
+    enable_internal_tools: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

@@ -3,12 +3,14 @@ from datetime import UTC, datetime
 from fastapi import FastAPI
 
 from app.api.v1.router import router as api_v1_router
+from app.internal.router import router as internal_router
 
 app = FastAPI(
     title="AI Calendar API",
     version="0.1.0",
 )
 app.include_router(api_v1_router)
+app.include_router(internal_router)
 
 
 @app.get("/")

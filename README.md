@@ -47,6 +47,45 @@ uvicorn app.main:app --reload
 Open <http://127.0.0.1:8000/docs> for the API documentation. Task endpoints are
 available under `/api/v1/tasks`.
 
+## Internal scheduling lab
+
+The scheduling lab is a development-only product-validation interface. It has no
+authentication and is disabled by default. Enable it explicitly:
+
+```bash
+ENABLE_INTERNAL_TOOLS=true uvicorn app.main:app --reload
+```
+
+Then open <http://127.0.0.1:8000/internal/scheduling-lab>. When
+`ENABLE_INTERNAL_TOOLS` is false, the page, assets, and internal API return 404.
+Do not enable this interface in a publicly accessible environment.
+
+The lab has two deliberately separate modes:
+
+- **Existing user** loads persisted tasks and preferences. Task actions use the
+  existing Task API, and preferences are persisted only when **Save preferences**
+  is clicked.
+- **Product scenario** loads files from `tests/product/examples/` into temporary
+  browser state. Edits, previews, busy intervals, and preferences remain
+  stateless and create no users, tasks, preferences, plans, or review records.
+
+Product-validation workflow:
+
+1. Start the application with internal tools enabled.
+2. Open `/internal/scheduling-lab`.
+3. Select an existing user or load a product scenario.
+4. Generate the schedule.
+5. Review the local-time day-by-day result and detailed scheduler output.
+6. Assign a score and verdict and record any observed problems.
+7. Download the normalized scenario inputs, generated result, and review as JSON.
+8. Store reviewed exports under `local/scheduling-reviews/`, which Git ignores,
+   unless a result is deliberately adapted into `tests/product/`.
+
+The internal preview calls the same pure availability and scheduling
+orchestration as the public stateless preview. Exported JSON contains the exact
+normalized inputs used for the displayed generation and contains no application
+configuration or environment values.
+
 ## Working hours
 
 Working hours are stored as IANA-local wall-clock times with all seven weekdays

@@ -5,6 +5,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.availability import TimeInterval, calculate_free_intervals
+from app.domain.preferences import SchedulingPreferences
 from app.domain.tasks import TaskStatus
 from app.models import Task, User
 from app.scheduling import SchedulerPreferences, SchedulerResult, SchedulingTask
@@ -35,26 +36,37 @@ def preview_schedule(
     planning = planning_window.as_utc()
     tasks = _load_preview_tasks(session, user_id, planning)
     stored_preferences = load_scheduling_preferences(session, user_id)
+    return generate_schedule_preview(
+        planning_window=planning,
+        busy_intervals=busy_intervals,
+        tasks=tuple(_to_scheduling_task(task) for task in tasks),
+        preferences=stored_preferences,
+    )
+
+
+def generate_schedule_preview(
+    *,
+    planning_window: TimeInterval,
+    busy_intervals: tuple[TimeInterval, ...],
+    tasks: tuple[SchedulingTask, ...],
+    preferences: SchedulingPreferences,
+) -> SchedulePreview:
+    """Generate a stateless preview from normalized scheduling inputs."""
+    planning = planning_window.as_utc()
     free = calculate_free_intervals(
         planning,
-        stored_preferences.working_hours,
+        preferences.working_hours,
         busy_intervals,
-        stored_preferences.timezone,
+        preferences.timezone,
     )
     scheduling_preferences = SchedulerPreferences(
-        timezone=stored_preferences.timezone,
-        preferred_task_time=stored_preferences.preferred_task_time,
-        minimum_break_minutes=stored_preferences.minimum_break_minutes,
-        no_deep_work_after=stored_preferences.no_deep_work_after,
-        default_minimum_session_minutes=(
-            stored_preferences.default_minimum_session_minutes
-        ),
+        timezone=preferences.timezone,
+        preferred_task_time=preferences.preferred_task_time,
+        minimum_break_minutes=preferences.minimum_break_minutes,
+        no_deep_work_after=preferences.no_deep_work_after,
+        default_minimum_session_minutes=preferences.default_minimum_session_minutes,
     )
-    result = schedule_tasks(
-        (_to_scheduling_task(task) for task in tasks),
-        free,
-        scheduling_preferences,
-    )
+    result = schedule_tasks(tasks, free, scheduling_preferences)
     return SchedulePreview(
         planning_window=planning,
         free_intervals=free,

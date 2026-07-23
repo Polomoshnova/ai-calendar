@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="/internal/static/scheduling_lab.css">
+  </head>
+  <body>
+    <header>
+      <p class="eyebrow">Development-only tool · no authentication</p>
+      <h1>Internal Scheduling Lab</h1>
+      <p>Inspect deterministic scheduling behavior without persisting previews or reviews.</p>
+    </header>
+
+    <main>
+      <div id="message" class="message" hidden></div>
+
+      <section>
+        <h2>A. User and preferences</h2>
+        <div class="mode-switch">
+          <label><input type="radio" name="mode" value="existing_user" checked> Existing user</label>
+          <label><input type="radio" name="mode" value="product_scenario"> Product scenario</label>
+        </div>
+        <div class="grid two">
+          <label id="user-field">User
+            <select id="user-select"></select>
+          </label>
+          <label id="scenario-field" hidden>Product scenario
+            <select id="scenario-select"><option value="">Select a scenario</option></select>
+          </label>
+          <div>
+            <span class="field-label">Timezone</span>
+            <strong id="timezone">—</strong>
+          </div>
+          <div>
+            <span class="field-label">Stored preferences</span>
+            <strong id="stored-preferences">—</strong>
+          </div>
+        </div>
+        <div id="expected-observations" class="observations" hidden></div>
+
+        <h3>Working hours</h3>
+        <div id="working-hours" class="working-hours"></div>
+        <div class="grid four">
+          <label>Preferred task time
+            <select id="preferred-task-time">
+              <option>any</option><option>morning</option><option>afternoon</option>
+            </select>
+          </label>
+          <label>Minimum break (minutes)
+            <input id="minimum-break" type="number" min="0" value="0">
+          </label>
+          <label>No deep work after
+            <input id="deep-work-cutoff" type="time">
+          </label>
+          <label>Default minimum session
+            <input id="default-session" type="number" min="1" value="15">
+          </label>
+        </div>
+        <button id="save-preferences" type="button">Save preferences</button>
+        <small id="scenario-preference-note" hidden>Scenario preferences are temporary and cannot be saved.</small>
+      </section>
+
+      <section>
+        <h2>B. Tasks</h2>
+        <form id="task-form">
+          <input id="task-id" type="hidden">
+          <div class="grid four">
+            <label>Title<input id="task-title" required maxlength="255"></label>
+            <label>Duration (minutes)<input id="task-duration" required type="number" min="1"></label>
+            <label>Priority
+              <select id="task-priority"><option>low</option><option selected>medium</option><option>high</option><option>urgent</option></select>
+            </label>
+            <label>Status
+              <select id="task-status"><option>pending</option><option>completed</option><option>cancelled</option></select>
+            </label>
+            <label>Earliest start<input id="task-earliest" type="datetime-local"></label>
+            <label>Deadline<input id="task-deadline" type="datetime-local"></label>
+            <label>Preferred time
+              <select id="task-preferred"><option>any</option><option>morning</option><option>afternoon</option></select>
+            </label>
+            <label class="checkbox"><input id="task-splittable" type="checkbox"> Splittable</label>
+            <label>Minimum session<input id="task-minimum-session" type="number" min="1" value="15"></label>
+            <label>Maximum sessions/day<input id="task-maximum-sessions" type="number" min="1" value="1"></label>
+          </div>
+          <button type="submit">Save task</button>
+          <button id="task-reset" type="button" class="secondary">Clear</button>
+        </form>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Title</th><th>Duration</th><th>Priority</th><th>Status</th><th>Window</th><th>Actions</th></tr></thead>
+            <tbody id="task-list"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2>C. Planning window and busy intervals</h2>
+        <div class="grid two">
+          <label>Planning start<input id="planning-start" type="datetime-local"></label>
+          <label>Planning end<input id="planning-end" type="datetime-local"></label>
+        </div>
+        <form id="busy-form">
+          <div class="grid three">
+            <label>Busy start<input id="busy-start" required type="datetime-local"></label>
+            <label>Busy end<input id="busy-end" required type="datetime-local"></label>
+            <label>Label<input id="busy-label" placeholder="Optional UI label"></label>
+          </div>
+          <button type="submit">Add busy interval</button>
+        </form>
+        <ul id="busy-list"></ul>
+      </section>
+
+      <section>
+        <h2>D. Generated schedule and review</h2>
+        <button id="generate" type="button" class="primary">Generate schedule</button>
+        <span id="loading" hidden>Generating…</span>
+        <div id="preview-empty" class="empty">Generate a preview to inspect the schedule.</div>
+        <div id="preview" hidden>
+          <h3>Day-by-day timeline</h3>
+          <div id="timeline"></div>
+          <h3>Result details</h3>
+          <dl id="result-summary"></dl>
+          <div class="grid three details">
+            <div><h4>Free intervals</h4><ul id="free-intervals"></ul></div>
+            <div><h4>Unscheduled tasks</h4><ul id="unscheduled"></ul></div>
+            <div><h4>Warnings</h4><ul id="warnings"></ul></div>
+          </div>
+          <details><summary>Raw API JSON</summary><pre id="raw-json"></pre></details>
+
+          <h3>Human evaluation</h3>
+          <div class="grid two">
+            <label>Score (1–5)<input id="review-score" type="number" min="1" max="5" value="3"></label>
+            <label>Verdict
+              <select id="review-verdict"><option>logical</option><option>acceptable</option><option>questionable</option><option>illogical</option></select>
+            </label>
+          </div>
+          <label>Notes<textarea id="review-notes" rows="4"></textarea></label>
+          <fieldset>
+            <legend>Observed problems</legend>
+            <div id="problem-options" class="problem-options"></div>
+          </fieldset>
+          <button id="export-review" type="button">Download scenario and review as JSON</button>
+        </div>
+      </section>
+    </main>
+    <script src="/internal/static/scheduling_lab.js"></script>
+  </body>
+</html>
