@@ -26,8 +26,8 @@ from app.workflows.errors import (
 from app.workflows.models import (
     WORKFLOW_VERSION,
     SchedulerInputSnapshot,
-    SchedulerResolvedValues,
     SchedulerTaskSnapshot,
+    SchedulerTaskValueSources,
     SchedulerValueSource,
     TaskToSchedulePreviewRequest,
     TaskToSchedulePreviewResponse,
@@ -47,6 +47,7 @@ class SchedulerMapping:
     snapshot: SchedulerTaskSnapshot
     warnings: tuple[str, ...]
     step_duration_sum: int | None
+    unallocated_minutes: int | None
     defaulted_fields: tuple[str, ...]
     confirmed_fields: tuple[str, ...]
 
@@ -126,7 +127,7 @@ def map_confirmed_task_to_scheduler_task(
         confirmed_task.minimum_session_minutes or default_minimum_session_minutes
     )
     maximum_sessions = confirmed_task.maximum_sessions_per_day or 1
-    value_sources = SchedulerResolvedValues(
+    value_sources = SchedulerTaskValueSources(
         priority=(
             SchedulerValueSource.confirmed
             if confirmed_task.priority is not None
@@ -193,6 +194,9 @@ def map_confirmed_task_to_scheduler_task(
         snapshot=snapshot,
         warnings=tuple(warnings),
         step_duration_sum=step_sum,
+        unallocated_minutes=(
+            confirmed_task.duration_minutes - step_sum if step_sum is not None else None
+        ),
         defaulted_fields=defaulted_fields,
         confirmed_fields=confirmed_fields,
     )
@@ -355,6 +359,7 @@ def execute_task_to_schedule_preview(
                 "duration_minutes": mapping.task.duration_minutes,
                 "step_count": len(confirmation.task.steps),
                 "step_duration_sum": mapping.step_duration_sum,
+                "unallocated_minutes": mapping.unallocated_minutes,
                 "defaulted_fields": list(mapping.defaulted_fields),
                 "confirmed_fields": list(mapping.confirmed_fields),
                 "window_start": scheduling_context.window_start,

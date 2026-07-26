@@ -279,9 +279,9 @@ def test_workflow_endpoint_is_visible_and_has_no_database_dependency() -> None:
     components = app.openapi()["components"]["schemas"]
     snapshot_schema = components["SchedulerTaskSnapshot"]
     assert snapshot_schema["properties"]["value_sources"] == {
-        "$ref": "#/components/schemas/SchedulerResolvedValues"
+        "$ref": "#/components/schemas/SchedulerTaskValueSources"
     }
-    assert set(components["SchedulerResolvedValues"]["properties"]) == {
+    assert set(components["SchedulerTaskValueSources"]["properties"]) == {
         "priority",
         "preferred_time_of_day",
         "minimum_session_minutes",

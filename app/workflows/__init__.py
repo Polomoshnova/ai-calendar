@@ -7,6 +7,8 @@ from app.workflows.errors import (
 )
 from app.workflows.models import (
     WORKFLOW_VERSION,
+    SchedulerTaskValueSources,
+    SchedulerValueSource,
     TaskToSchedulePreviewRequest,
     TaskToSchedulePreviewResponse,
     WorkflowReplayCase,
@@ -18,6 +20,8 @@ from app.workflows.task_to_schedule_preview import (
 
 __all__ = [
     "WORKFLOW_VERSION",
+    "SchedulerTaskValueSources",
+    "SchedulerValueSource",
     "TaskToSchedulePreviewRequest",
     "TaskToSchedulePreviewResponse",
     "WorkflowAIError",

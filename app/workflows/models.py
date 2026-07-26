@@ -112,7 +112,7 @@ class SchedulerValueSource(StrEnum):
     scheduler_default = "scheduler_default"
 
 
-class SchedulerResolvedValues(StrictModel):
+class SchedulerTaskValueSources(StrictModel):
     priority: SchedulerValueSource
     preferred_time_of_day: SchedulerValueSource
     minimum_session_minutes: SchedulerValueSource
@@ -141,7 +141,7 @@ class SchedulerTaskSnapshot(StrictModel):
     minimum_session_minutes: int
     maximum_sessions_per_day: int
     steps: list[ConfirmedTaskStep]
-    value_sources: SchedulerResolvedValues
+    value_sources: SchedulerTaskValueSources
 
 
 class SchedulerInputSnapshot(StrictModel):

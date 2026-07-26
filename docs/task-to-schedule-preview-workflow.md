@@ -187,7 +187,7 @@ and depend on the request inputs.
 
 `ConfirmedTask` contains only user-approved planning values. The operational
 mapper may still need scheduler fallbacks, so `SchedulerTaskSnapshot` records
-their provenance in the typed `SchedulerResolvedValues` model under
+their provenance in the typed `SchedulerTaskValueSources` model under
 `value_sources`.
 
 `SchedulerValueSource` has two meanings:
@@ -229,6 +229,26 @@ maximum_sessions_per_day.
 The same trace entry exposes deterministic `defaulted_fields` and
 `confirmed_fields` arrays. This provenance is not passed to `SchedulingTask` and
 does not affect the scheduling heuristic or public scheduler warnings.
+
+When every conceptual step has a known duration, scheduler-mapping trace also
+contains:
+
+```text
+unallocated_minutes = confirmed duration - step duration sum
+```
+
+For example:
+
+```text
+ConfirmedTask.duration_minutes = 360
+steps total = 300
+→ unallocated_minutes = 60
+```
+
+The value can be positive, zero, or negative. When any step duration is unknown,
+`step_duration_sum` and `unallocated_minutes` are both `null`. This diagnostic
+never rewrites the confirmed duration or step durations and never creates an
+automatic buffer step.
 
 A deadline before the preview window and earliest start after the preview window
 are rejected. A deadline after the window is allowed, but trace warns that the

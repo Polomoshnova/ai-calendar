@@ -18,6 +18,8 @@ from app.workflows.errors import (
 )
 from app.workflows.models import (
     WORKFLOW_VERSION,
+    SchedulerTaskSnapshot,
+    SchedulerTaskValueSources,
     SchedulerValueSource,
     TaskToSchedulePreviewRequest,
     WorkflowSchedulingContext,
@@ -464,6 +466,30 @@ def test_mapping_records_scheduler_defaults_explicitly() -> None:
     )
 
 
+def test_scheduler_snapshot_requires_strict_typed_value_sources() -> None:
+    task = ConfirmedTask(
+        title="Task",
+        duration_minutes=60,
+        is_splittable=False,
+        steps=[],
+    )
+    mapping = map_confirmed_task_to_scheduler_task(
+        task,
+        task_id="stable-id",
+        default_minimum_session_minutes=15,
+    )
+    snapshot = mapping.snapshot.model_dump()
+    del snapshot["value_sources"]
+
+    with pytest.raises(ValidationError, match="value_sources"):
+        SchedulerTaskSnapshot.model_validate(snapshot)
+
+    invalid_sources = mapping.snapshot.value_sources.model_dump()
+    invalid_sources["unexpected"] = "confirmed"
+    with pytest.raises(ValidationError, match="unexpected"):
+        SchedulerTaskValueSources.model_validate(invalid_sources)
+
+
 @pytest.mark.parametrize("is_splittable", [True, False])
 def test_values_equal_to_defaults_still_have_confirmed_source(
     is_splittable: bool,
@@ -522,6 +548,36 @@ def test_scheduler_mapping_trace_exposes_deterministic_provenance() -> None:
     )
 
 
+def test_trace_reports_unallocated_minutes() -> None:
+    payload = draft_payload()
+    payload["duration"] = value(360, source="estimated", confirmation=True)
+    payload["proposed_steps"] = [
+        {
+            "title": value("Research", source="user"),
+            "description": value(),
+            "duration": value(150, source="user"),
+            "order": 1,
+        },
+        {
+            "title": value("Slides", source="user"),
+            "description": value(),
+            "duration": value(150, source="user"),
+            "order": 2,
+        },
+    ]
+    draft = TaskDraftV2.model_validate(payload)
+    request = TaskToSchedulePreviewRequest.model_validate(request_payload())
+
+    result = execute_task_to_schedule_preview(request, ai_gateway=fake_gateway(draft))
+
+    mapping_trace = next(
+        entry for entry in result.trace if entry.stage.value == "scheduler_mapping"
+    )
+    assert mapping_trace.metadata["duration_minutes"] == 360
+    assert mapping_trace.metadata["step_duration_sum"] == 300
+    assert mapping_trace.metadata["unallocated_minutes"] == 60
+
+
 def test_conceptual_steps_are_preserved_and_warned() -> None:
     task = ConfirmedTask(
         title="Task",
@@ -541,6 +597,7 @@ def test_conceptual_steps_are_preserved_and_warned() -> None:
 
     assert len(mapping.snapshot.steps) == 2
     assert mapping.step_duration_sum == 90
+    assert mapping.unallocated_minutes == 30
     assert any("differs" in warning for warning in mapping.warnings)
     assert any("not scheduled independently" in warning for warning in mapping.warnings)
     assert mapping.task.duration_minutes == 120
@@ -564,6 +621,50 @@ def test_matching_step_sum_has_no_discrepancy_warning() -> None:
     )
 
     assert not any("differs" in warning for warning in mapping.warnings)
+    assert mapping.unallocated_minutes == 0
+
+
+def test_step_total_greater_than_duration_reports_negative_unallocated() -> None:
+    task = ConfirmedTask(
+        title="Task",
+        duration_minutes=90,
+        is_splittable=True,
+        steps=[
+            ConfirmedTaskStep(title="One", duration_minutes=50, order=1),
+            ConfirmedTaskStep(title="Two", duration_minutes=50, order=2),
+        ],
+    )
+
+    mapping = map_confirmed_task_to_scheduler_task(
+        task,
+        task_id="stable-id",
+        default_minimum_session_minutes=15,
+    )
+
+    assert mapping.step_duration_sum == 100
+    assert mapping.unallocated_minutes == -10
+    assert mapping.task.duration_minutes == 90
+
+
+def test_incomplete_step_durations_report_null_unallocated() -> None:
+    task = ConfirmedTask(
+        title="Task",
+        duration_minutes=90,
+        is_splittable=True,
+        steps=[
+            ConfirmedTaskStep(title="One", duration_minutes=45, order=1),
+            ConfirmedTaskStep(title="Two", duration_minutes=None, order=2),
+        ],
+    )
+
+    mapping = map_confirmed_task_to_scheduler_task(
+        task,
+        task_id="stable-id",
+        default_minimum_session_minutes=15,
+    )
+
+    assert mapping.step_duration_sum is None
+    assert mapping.unallocated_minutes is None
 
 
 @pytest.mark.parametrize("duration", [0, -1])
