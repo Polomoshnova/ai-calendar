@@ -32,6 +32,77 @@ def test_availability_and_scheduling_are_infrastructure_independent() -> None:
         assert forbidden == set(), f"{source_file} imports {sorted(forbidden)}"
 
 
+def test_ai_intake_is_isolated_from_planning_and_persistence() -> None:
+    project_root = Path(__file__).parents[2]
+    source_files = list(project_root.glob("app/ai_intake/*.py"))
+    forbidden_roots = {
+        "fastapi",
+        "sqlalchemy",
+        "app.availability",
+        "app.models",
+        "app.scheduling",
+        "app.services",
+    }
+
+    for source_file in source_files:
+        tree = ast.parse(source_file.read_text())
+        imported = _imported_modules(tree)
+        forbidden = {
+            module
+            for module in imported
+            if any(
+                module == root or module.startswith(f"{root}.")
+                for root in forbidden_roots
+            )
+        }
+        assert forbidden == set(), f"{source_file} imports {sorted(forbidden)}"
+
+    route_file = project_root / "app" / "internal" / "ai_intake_router.py"
+    imported = _imported_modules(ast.parse(route_file.read_text()))
+    route_forbidden_roots = forbidden_roots - {"fastapi"}
+    forbidden = {
+        module
+        for module in imported
+        if any(
+            module == root or module.startswith(f"{root}.")
+            for root in route_forbidden_roots
+        )
+    }
+    assert forbidden == set(), f"{route_file} imports {sorted(forbidden)}"
+
+
+def test_task_confirmation_is_pure_application_logic() -> None:
+    project_root = Path(__file__).parents[2]
+    source_files = list(project_root.glob("app/task_confirmation/*.py"))
+    assert source_files
+    forbidden_roots = {
+        "fastapi",
+        "sqlalchemy",
+        "app.core",
+        "app.models",
+        "app.scheduling",
+        "app.services",
+        "app.internal",
+        "app.api",
+        "app.ai_intake.gateway",
+        "app.ai_intake.openai_provider",
+        "app.ai_intake.provider",
+    }
+
+    for source_file in source_files:
+        tree = ast.parse(source_file.read_text())
+        imported = _imported_modules(tree)
+        forbidden = {
+            module
+            for module in imported
+            if any(
+                module == root or module.startswith(f"{root}.")
+                for root in forbidden_roots
+            )
+        }
+        assert forbidden == set(), f"{source_file} imports {sorted(forbidden)}"
+
+
 def _imported_modules(tree: ast.AST) -> set[str]:
     modules: set[str] = set()
     for node in ast.walk(tree):

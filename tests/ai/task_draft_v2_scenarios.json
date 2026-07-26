@@ -1,0 +1,70 @@
+[
+  {
+    "id": "tomorrow-dentist",
+    "input": "Завтра утром позвонить стоматологу, займёт около 15 минут",
+    "expect": [
+      "duration 15 is user-sourced",
+      "tomorrow is normalized with an offset",
+      "preferred time is morning",
+      "no decomposition or unnecessary question"
+    ]
+  },
+  {
+    "id": "presentation-friday",
+    "input": "Подготовить презентацию к пятнице",
+    "expect": [
+      "deadline is normalized as inferred",
+      "estimated duration is realistic and requires confirmation"
+    ]
+  },
+  {
+    "id": "investor-presentation",
+    "input": "До конца недели подготовить презентацию для инвесторов: собрать метрики, сделать структуру и оформить 10 слайдов",
+    "expect": [
+      "Sunday week-end deadline is normalized",
+      "three explicit stages are preserved",
+      "estimated durations are not marked user-sourced"
+    ]
+  },
+  {
+    "id": "course-window",
+    "input": "В течение двух недель пройти курс из 8 уроков по 45 минут, не больше двух занятий в день",
+    "expect": [
+      "duration is inferred as 360 with the calculation explained",
+      "maximum sessions per day is user-sourced",
+      "two-week deadline is normalized"
+    ]
+  },
+  {
+    "id": "someday-photos",
+    "input": "Когда-нибудь разобрать фотографии",
+    "expect": [
+      "vagueness is not converted into a false precise deadline",
+      "clarification is added only if it materially affects scheduling"
+    ]
+  },
+  {
+    "id": "report-at-six",
+    "input": "Сегодня в 18:00 отправить отчёт",
+    "expect": [
+      "today at 18:00 is normalized with the user timezone offset",
+      "explicit time is preserved"
+    ]
+  },
+  {
+    "id": "write-article",
+    "input": "Написать статью",
+    "expect": [
+      "title is preserved",
+      "duration is null or a realistic estimate with honest confidence"
+    ]
+  },
+  {
+    "id": "recurring-pool",
+    "input": "Каждый вторник в 19:00 ходить в бассейн",
+    "expect": [
+      "recurrence is preserved in description or clarification",
+      "recurrence is not silently discarded"
+    ]
+  }
+]

@@ -1,15 +1,14 @@
 import uuid
 from pathlib import Path
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import FileResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 
 from app.api.dependencies import DatabaseSession
-from app.core.config import Settings, get_settings
 from app.domain.preferences import serialize_working_hours
+from app.internal.dependencies import InternalToolsEnabled
 from app.internal.export import build_export_payload, contains_secret_fields
 from app.internal.scenario_loader import (
     InvalidScenarioError,
@@ -46,16 +45,6 @@ APP_DIRECTORY = INTERNAL_DIRECTORY.parent
 templates = Jinja2Templates(directory=APP_DIRECTORY / "templates")
 
 router = APIRouter(prefix="/internal", include_in_schema=False)
-
-
-def require_internal_tools(
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> None:
-    if not settings.enable_internal_tools:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-
-
-InternalToolsEnabled = Annotated[None, Depends(require_internal_tools)]
 
 
 @router.get("/scheduling-lab")

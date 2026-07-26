@@ -86,6 +86,79 @@ orchestration as the public stateless preview. Exported JSON contains the exact
 normalized inputs used for the displayed generation and contains no application
 configuration or environment values.
 
+### Internal AI intake
+
+With internal tools enabled, analyze natural-language task text without creating
+database records:
+
+```bash
+export OPENAI_API_KEY="your-key"
+curl -X POST http://127.0.0.1:8000/internal/api/task-drafts/analyze \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"Prepare release notes by tomorrow afternoon"}'
+```
+
+The endpoint uses a versioned prompt and OpenAI Structured Outputs, validates the
+provider response against the `TaskDraft` JSON Schema and domain rules, and
+returns a temporary draft. It does not create users, tasks, preferences, or
+calendar records, and it never invokes availability or the scheduler.
+
+Configuration:
+
+```text
+OPENAI_MODEL=gpt-5.6
+AI_INTAKE_PROMPT_VERSION=ai-intake.task-draft.v2
+AI_INTAKE_DEFAULT_TIMEZONE=UTC
+AI_INTAKE_TIMEOUT_SECONDS=30
+```
+
+The endpoint returns 404 when internal tools are disabled, 503 when the API key
+is missing, and 502 for provider or invalid-output failures.
+
+The response uses `task-draft.schema.v2`. Each interpreted field contains
+`value`, `source`, `confidence`, `explanation`, and
+`requires_confirmation`. For example:
+
+```json
+{
+  "title": {
+    "value": "Подготовить презентацию",
+    "source": "user",
+    "confidence": 1.0,
+    "explanation": null,
+    "requires_confirmation": false
+  },
+  "duration": {
+    "value": 120,
+    "source": "estimated",
+    "confidence": 0.65,
+    "explanation": "Оценка времени на подготовку презентации.",
+    "requires_confirmation": true
+  },
+  "schema_version": "task-draft.schema.v2"
+}
+```
+
+The real response also contains every field in the strict contract. A draft is
+an application-layer AI interpretation object, not a persisted domain entity.
+The endpoint does not invoke the database or scheduler.
+
+### Internal task confirmation
+
+Review an AI draft without persistence or scheduler calls:
+
+```bash
+curl -X POST http://127.0.0.1:8000/internal/api/task-drafts/confirm \
+  -H 'Content-Type: application/json' \
+  -d @confirmation-request.json
+```
+
+The request contains a complete `TaskDraftV2` and a typed `DraftReview`. The
+response contains a clean `ConfirmedTask` and an in-memory
+`ConfirmationAudit`. Review mode defaults to `explicit`; invalid or incomplete
+reviews return 422. See [Task Confirmation Layer](docs/task-confirmation.md) for
+decision semantics, modes, and examples.
+
 ## Working hours
 
 Working hours are stored as IANA-local wall-clock times with all seven weekdays
