@@ -103,6 +103,41 @@ def test_task_confirmation_is_pure_application_logic() -> None:
         assert forbidden == set(), f"{source_file} imports {sorted(forbidden)}"
 
 
+def test_workflows_orchestrate_without_infrastructure_or_scheduler_heuristics() -> None:
+    project_root = Path(__file__).parents[2]
+    source_files = list(project_root.glob("app/workflows/*.py"))
+    assert source_files
+    forbidden_roots = {
+        "fastapi",
+        "sqlalchemy",
+        "google",
+        "app.core.database",
+        "app.models",
+        "app.scheduling.scheduler",
+        "app.internal.router",
+    }
+
+    for source_file in source_files:
+        tree = ast.parse(source_file.read_text())
+        imported = _imported_modules(tree)
+        forbidden = {
+            module
+            for module in imported
+            if any(
+                module == root or module.startswith(f"{root}.")
+                for root in forbidden_roots
+            )
+        }
+        assert forbidden == set(), f"{source_file} imports {sorted(forbidden)}"
+
+    route_file = project_root / "app" / "internal" / "workflow_router.py"
+    route_source = route_file.read_text()
+    imported = _imported_modules(ast.parse(route_source))
+    assert not any(module.startswith("sqlalchemy") for module in imported)
+    assert "DatabaseSession" not in route_source
+    assert "get_db" not in route_source
+
+
 def _imported_modules(tree: ast.AST) -> set[str]:
     modules: set[str] = set()
     for node in ast.walk(tree):

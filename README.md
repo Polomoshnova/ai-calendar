@@ -159,6 +159,18 @@ response contains a clean `ConfirmedTask` and an in-memory
 reviews return 422. See [Task Confirmation Layer](docs/task-confirmation.md) for
 decision semantics, modes, and examples.
 
+### Internal end-to-end workflow
+
+`POST /internal/api/workflows/task-to-schedule-preview` runs AI Intake,
+confirmation, deterministic mapping, and the shared stateless scheduling preview
+in one internal request. It returns the draft, confirmation audit, normalized
+scheduler input, schedule response, and a safe structured trace. Nothing is
+persisted and no calendar API is called.
+
+See [Internal task-to-schedule-preview workflow](docs/task-to-schedule-preview-workflow.md)
+for the complete contract, deterministic AI context, error codes, replay
+fixtures, mapping rules, and limitations.
+
 ## Working hours
 
 Working hours are stored as IANA-local wall-clock times with all seven weekdays

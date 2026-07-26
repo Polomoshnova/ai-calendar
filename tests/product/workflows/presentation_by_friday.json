@@ -1,0 +1,125 @@
+{
+  "name": "presentation-by-friday",
+  "request": {
+    "text": "Подготовить презентацию к пятнице",
+    "review": {
+      "mode": "explicit",
+      "duration": {"decision": "edited", "value": 180},
+      "deadline": {"decision": "accepted"},
+      "is_splittable": {"decision": "accepted"},
+      "minimum_session_minutes": {"decision": "accepted"},
+      "proposed_steps": [],
+      "confirmation_note": "Deterministic replay fixture."
+    },
+    "scheduling_context": {
+      "window_start": "2026-07-27T08:00:00+02:00",
+      "window_end": "2026-07-31T20:00:00+02:00",
+      "timezone": "Europe/Warsaw",
+      "busy_intervals": [],
+      "preferences": {
+        "timezone": "Europe/Warsaw",
+        "working_hours": {
+          "monday": [{"start": "09:00", "end": "18:00"}],
+          "tuesday": [{"start": "09:00", "end": "18:00"}],
+          "wednesday": [{"start": "09:00", "end": "18:00"}],
+          "thursday": [{"start": "09:00", "end": "18:00"}],
+          "friday": [{"start": "09:00", "end": "18:00"}],
+          "saturday": [],
+          "sunday": []
+        },
+        "preferred_task_time": "any",
+        "minimum_break_minutes": 15,
+        "no_deep_work_after": "17:00",
+        "default_minimum_session_minutes": 15
+      },
+      "existing_pending_tasks": []
+    },
+    "ai_context": {
+      "current_datetime": "2026-07-26T15:00:00+02:00",
+      "timezone": "Europe/Warsaw"
+    },
+    "include_trace": true
+  },
+  "fake_ai_response": {
+    "title": {
+      "value": "Подготовить презентацию",
+      "source": "user",
+      "confidence": 1.0,
+      "explanation": null,
+      "requires_confirmation": false
+    },
+    "description": {
+      "value": null,
+      "source": null,
+      "confidence": null,
+      "explanation": null,
+      "requires_confirmation": false
+    },
+    "duration": {
+      "value": 120,
+      "source": "estimated",
+      "confidence": 0.7,
+      "explanation": "Оценка времени на подготовку презентации.",
+      "requires_confirmation": true
+    },
+    "priority": {
+      "value": null,
+      "source": null,
+      "confidence": null,
+      "explanation": null,
+      "requires_confirmation": false
+    },
+    "earliest_start": {
+      "value": null,
+      "source": null,
+      "confidence": null,
+      "explanation": null,
+      "requires_confirmation": false
+    },
+    "deadline": {
+      "value": "2026-07-31T23:59:59+02:00",
+      "source": "inferred",
+      "confidence": 0.9,
+      "explanation": "Ближайшая будущая пятница.",
+      "requires_confirmation": true
+    },
+    "preferred_time_of_day": {
+      "value": null,
+      "source": null,
+      "confidence": null,
+      "explanation": null,
+      "requires_confirmation": false
+    },
+    "is_splittable": {
+      "value": true,
+      "source": "estimated",
+      "confidence": 0.7,
+      "explanation": "Работу можно выполнять несколькими сессиями.",
+      "requires_confirmation": true
+    },
+    "minimum_session_minutes": {
+      "value": 30,
+      "source": "estimated",
+      "confidence": 0.6,
+      "explanation": "Оценочная минимальная рабочая сессия.",
+      "requires_confirmation": true
+    },
+    "maximum_sessions_per_day": {
+      "value": null,
+      "source": null,
+      "confidence": null,
+      "explanation": null,
+      "requires_confirmation": false
+    },
+    "proposed_steps": [],
+    "clarification_questions": [],
+    "prompt_version": "ai-intake.task-draft.v2",
+    "schema_version": "task-draft.schema.v2"
+  },
+  "expected": {
+    "status": "completed",
+    "expected_duration_minutes": 180,
+    "expected_warning_codes": [],
+    "expected_error_code": null
+  }
+}
