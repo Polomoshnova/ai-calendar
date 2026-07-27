@@ -14,10 +14,23 @@ class Settings(BaseSettings):
     ai_intake_prompt_version: str = "ai-intake.task-draft.v2"
     ai_intake_default_timezone: str = "UTC"
     ai_intake_timeout_seconds: float = 30.0
+    google_calendar_client_id: str | None = None
+    google_calendar_client_secret: SecretStr | None = None
+    google_calendar_redirect_uri: str = (
+        "http://127.0.0.1:8000/internal/api/calendar/google/oauth/callback"
+    )
+    google_calendar_scopes: str = "https://www.googleapis.com/auth/calendar.readonly"
+    calendar_token_encryption_key: SecretStr | None = None
+    google_calendar_timeout_seconds: float = 15.0
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    @field_validator("openai_api_key", mode="before")
+    @field_validator(
+        "openai_api_key",
+        "google_calendar_client_secret",
+        "calendar_token_encryption_key",
+        mode="before",
+    )
     @classmethod
     def normalize_empty_api_key(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():

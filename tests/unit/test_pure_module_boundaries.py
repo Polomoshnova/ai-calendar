@@ -138,6 +138,37 @@ def test_workflows_orchestrate_without_infrastructure_or_scheduler_heuristics() 
     assert "get_db" not in route_source
 
 
+def test_calendar_boundaries_keep_google_out_of_scheduler() -> None:
+    project_root = Path(__file__).parents[2]
+    protocol_files = [
+        project_root / "app" / "calendar_integration" / "models.py",
+        project_root / "app" / "calendar_integration" / "protocols.py",
+    ]
+    for source_file in protocol_files:
+        imported = _imported_modules(ast.parse(source_file.read_text()))
+        assert not any(
+            module == root or module.startswith(f"{root}.")
+            for module in imported
+            for root in {"fastapi", "sqlalchemy", "app.models"}
+        )
+
+    scheduler_files = [
+        *project_root.glob("app/availability/*.py"),
+        *project_root.glob("app/scheduling/*.py"),
+    ]
+    for source_file in scheduler_files:
+        imported = _imported_modules(ast.parse(source_file.read_text()))
+        assert not any(
+            module.startswith("app.calendar_integration") for module in imported
+        )
+
+    google_client = (
+        project_root / "app" / "calendar_integration" / "google" / "client.py"
+    )
+    imported = _imported_modules(ast.parse(google_client.read_text()))
+    assert "app.scheduling.scheduler" not in imported
+
+
 def _imported_modules(tree: ast.AST) -> set[str]:
     modules: set[str] = set()
     for node in ast.walk(tree):

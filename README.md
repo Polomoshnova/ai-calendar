@@ -1,9 +1,13 @@
 # AI Calendar API
 
+Google Calendar read-only setup is documented in
+[`docs/google-calendar-readonly.md`](docs/google-calendar-readonly.md).
+
 Product foundation for an AI-assisted task scheduler. This milestone contains task
 management, PostgreSQL persistence, and a pure deterministic scheduling core.
-Calendar providers, AI, authentication, background jobs, plan persistence, and
-calendar writes are deliberately out of scope.
+Google Calendar availability is available through an internal read-only
+integration. Authentication, background jobs, plan persistence, and calendar
+writes remain deliberately out of scope.
 
 ## Prerequisites
 
@@ -29,13 +33,20 @@ healthy before applying migrations:
 docker compose ps
 ```
 
-Authentication is intentionally not implemented. To exercise Task CRUD manually,
-create a development user first:
+Authentication is intentionally not implemented. To exercise Task CRUD or
+Google Calendar OAuth locally, enable internal tools and create or retrieve a
+development user:
 
 ```bash
-docker compose exec postgres psql -U ai_calendar -d ai_calendar -c \
-  "INSERT INTO users (id, email, timezone) VALUES ('11111111-1111-1111-1111-111111111111', 'owner@example.com', 'Europe/Warsaw');"
+curl -X POST http://127.0.0.1:8000/internal/api/dev/users \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"owner@example.com","timezone":"Europe/Warsaw"}'
 ```
+
+The endpoint is an internal get-or-create helper, not a registration API. Email
+is trimmed and lowercased, timezone must be a valid IANA timezone, and an
+existing user's timezone is not changed. See
+[Internal development users](docs/internal-dev-users.md).
 
 ## Run
 

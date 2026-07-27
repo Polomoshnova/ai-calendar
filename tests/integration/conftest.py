@@ -10,7 +10,14 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.database import get_db
 from app.main import app
-from app.models import Task, User, UserPreferences
+from app.models import (
+    CalendarConnection,
+    CalendarOAuthState,
+    CalendarSelection,
+    Task,
+    User,
+    UserPreferences,
+)
 
 
 def require_test_database_url() -> str:
@@ -43,12 +50,18 @@ TestSessionLocal = sessionmaker(bind=test_engine, expire_on_commit=False)
 @pytest.fixture
 def db_session() -> Generator[Session, None, None]:
     with TestSessionLocal() as session:
+        session.execute(delete(CalendarSelection))
+        session.execute(delete(CalendarOAuthState))
+        session.execute(delete(CalendarConnection))
         session.execute(delete(Task))
         session.execute(delete(UserPreferences))
         session.execute(delete(User))
         session.commit()
         yield session
         session.rollback()
+        session.execute(delete(CalendarSelection))
+        session.execute(delete(CalendarOAuthState))
+        session.execute(delete(CalendarConnection))
         session.execute(delete(Task))
         session.execute(delete(UserPreferences))
         session.execute(delete(User))

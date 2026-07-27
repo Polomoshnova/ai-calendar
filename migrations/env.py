@@ -5,7 +5,14 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.config import get_settings
 from app.core.database import Base
-from app.models import Task, User, UserPreferences  # noqa: F401
+from app.models import (  # noqa: F401
+    CalendarConnection,
+    CalendarOAuthState,
+    CalendarSelection,
+    Task,
+    User,
+    UserPreferences,
+)
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_settings().database_url)

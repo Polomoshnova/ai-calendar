@@ -1,0 +1,175 @@
+import asyncio
+from datetime import UTC, datetime, timedelta
+from urllib.parse import parse_qs, urlparse
+
+import httpx
+import pytest
+from cryptography.fernet import Fernet
+from pydantic import ValidationError
+
+from app.calendar_integration.google import (
+    GoogleCalendarProvider,
+    GoogleOAuthClient,
+    GoogleOAuthConfig,
+)
+from app.calendar_integration.mapper import normalize_calendar_busy_intervals
+from app.calendar_integration.models import (
+    CalendarBusyInterval,
+    CalendarBusyResult,
+    CalendarProviderConnection,
+)
+from app.calendar_integration.security import FernetTokenCipher
+
+NOW = datetime(2026, 7, 27, 8, tzinfo=UTC)
+
+
+def test_fernet_cipher_encrypts_and_decrypts_without_plaintext() -> None:
+    cipher = FernetTokenCipher(Fernet.generate_key().decode())
+    encrypted = cipher.encrypt("private-access-token")
+
+    assert encrypted != "private-access-token"
+    assert "private-access-token" not in encrypted
+    assert cipher.decrypt(encrypted) == "private-access-token"
+
+
+def test_oauth_authorization_url_is_read_only_and_safe() -> None:
+    oauth = GoogleOAuthClient(
+        httpx.AsyncClient(),
+        GoogleOAuthConfig(
+            client_id="public-client-id",
+            client_secret="private-secret",
+            redirect_uri="http://127.0.0.1:8000/internal/api/calendar/google/oauth/callback",
+            scopes=("https://www.googleapis.com/auth/calendar.readonly",),
+        ),
+    )
+    query = parse_qs(urlparse(oauth.authorization_url("random-state")).query)
+
+    assert query["scope"] == ["https://www.googleapis.com/auth/calendar.readonly"]
+    assert query["access_type"] == ["offline"]
+    assert query["include_granted_scopes"] == ["true"]
+    assert query["state"] == ["random-state"]
+    assert query["redirect_uri"] == [
+        "http://127.0.0.1:8000/internal/api/calendar/google/oauth/callback"
+    ]
+    assert "private-secret" not in str(query)
+
+
+def test_busy_normalization_merges_overlap_touch_and_calendars() -> None:
+    result = CalendarBusyResult(
+        time_min=NOW,
+        time_max=NOW + timedelta(hours=6),
+        timezone="UTC",
+        intervals=[
+            CalendarBusyInterval(
+                start=NOW + timedelta(hours=2),
+                end=NOW + timedelta(hours=3),
+                calendar_id="work",
+            ),
+            CalendarBusyInterval(
+                start=NOW,
+                end=NOW + timedelta(hours=2),
+                calendar_id="primary",
+            ),
+            CalendarBusyInterval(
+                start=NOW + timedelta(hours=4),
+                end=NOW + timedelta(hours=4),
+                calendar_id="zero",
+            ),
+        ],
+        errors=[],
+    )
+
+    normalized = normalize_calendar_busy_intervals(result)
+
+    assert len(normalized) == 1
+    assert normalized[0].start == NOW
+    assert normalized[0].end == NOW + timedelta(hours=3)
+    assert len(result.intervals) == 3
+
+
+def test_google_calendar_list_paginates_and_maps_fields() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        page = request.url.params.get("pageToken")
+        if page is None:
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": "primary",
+                            "summary": "Main",
+                            "primary": True,
+                            "timeZone": "Europe/Warsaw",
+                            "unknown": "ignored",
+                        }
+                    ],
+                    "nextPageToken": "next",
+                },
+            )
+        return httpx.Response(
+            200,
+            json={"items": [{"id": "shared", "summary": "Shared"}]},
+        )
+
+    async def run() -> list:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            provider = GoogleCalendarProvider(client)
+            return await provider.list_calendars(
+                CalendarProviderConnection(
+                    connection_id="00000000-0000-0000-0000-000000000001",
+                    access_token="token",
+                )
+            )
+
+    calendars = asyncio.run(run())
+
+    assert [item.id for item in calendars] == ["primary", "shared"]
+    assert calendars[0].primary is True
+    assert calendars[0].timezone == "Europe/Warsaw"
+    assert requests[0].url.params["maxResults"] == "250"
+    assert requests[1].url.params["pageToken"] == "next"
+
+
+def test_free_busy_batches_more_than_fifty_calendars() -> None:
+    batches: list[list[str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = __import__("json").loads(request.content)
+        ids = [item["id"] for item in body["items"]]
+        batches.append(ids)
+        return httpx.Response(
+            200,
+            json={"calendars": {item: {"busy": []} for item in ids}},
+        )
+
+    ids = [f"calendar-{index}" for index in range(51)]
+
+    async def run() -> CalendarBusyResult:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await GoogleCalendarProvider(client).query_busy_intervals(
+                CalendarProviderConnection(
+                    connection_id="00000000-0000-0000-0000-000000000001",
+                    access_token="token",
+                ),
+                calendar_ids=ids,
+                time_min=NOW,
+                time_max=NOW + timedelta(days=1),
+                timezone="UTC",
+            )
+
+    result = asyncio.run(run())
+
+    assert [len(batch) for batch in batches] == [50, 1]
+    assert result.intervals == []
+
+
+def test_busy_interval_requires_timezone_and_valid_order() -> None:
+    with pytest.raises(ValidationError):
+        CalendarBusyInterval(
+            start=NOW,
+            end=NOW - timedelta(minutes=1),
+            calendar_id="primary",
+        )

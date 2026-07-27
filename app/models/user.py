@@ -10,6 +10,7 @@ from app.core.database import Base
 from app.domain.timezones import validate_timezone
 
 if TYPE_CHECKING:
+    from app.models.calendar import CalendarConnection
     from app.models.task import Task
     from app.models.user_preferences import UserPreferences
 
@@ -33,6 +34,9 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan"
     )
     tasks: Mapped[list["Task"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    calendar_connections: Mapped[list["CalendarConnection"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 

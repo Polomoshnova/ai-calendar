@@ -247,7 +247,14 @@ def test_preview_creates_no_database_rows(
 
     assert response.status_code == 200
     assert after == before
-    assert set(after) == {"users", "user_preferences", "tasks"}
+    assert set(after) == {
+        "users",
+        "user_preferences",
+        "tasks",
+        "calendar_connections",
+        "calendar_oauth_states",
+        "calendar_selections",
+    }
 
 
 def test_missing_preferences_use_defaults_without_persistence(
