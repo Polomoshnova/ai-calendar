@@ -39,7 +39,10 @@ class CalendarConnection(Base):
     __tablename__ = "calendar_connections"
     __table_args__ = (
         UniqueConstraint(
-            "user_id", "provider", name="uq_calendar_connection_user_provider"
+            "user_id",
+            "provider",
+            "provider_account_id",
+            name="uq_calendar_connection_user_provider_account",
         ),
     )
 

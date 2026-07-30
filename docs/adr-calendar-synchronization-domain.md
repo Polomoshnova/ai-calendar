@@ -5,7 +5,7 @@ Date: 2026-07-28
 
 Last verified against code: 2026-07-28
 
-Latest verified Alembic revision: `20260728_07`
+Latest verified Alembic revision: `20260730_08`
 
 ## Context
 
@@ -31,9 +31,9 @@ domain to Google API calls.
   transport concerns and are not part of this foundation.
 
 The per-session write-target snapshot and mapping model can represent different
-connections across a task's sessions. The current Google runtime still enforces
-one connection per user/provider and has no write workflow, so multi-account
-writing is a future application capability rather than implemented behavior.
+connections across a task's sessions. The Google runtime permits multiple
+accounts per user but has no write workflow, so multi-account writing remains a
+future application capability.
 
 ## Consequences
 

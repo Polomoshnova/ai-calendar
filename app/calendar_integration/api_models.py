@@ -36,6 +36,7 @@ class ConnectionStatusResponse(StrictModel):
     id: uuid.UUID
     provider: Literal["google"]
     status: str
+    provider_account_id: str | None
     provider_account_email: str | None
     scopes: list[str]
     created_at: datetime
@@ -44,6 +45,10 @@ class ConnectionStatusResponse(StrictModel):
     selected_calendar_count: int
     last_successful_sync_at: datetime | None
     last_error_code: str | None
+
+
+class ConnectionListResponse(StrictModel):
+    connections: list[ConnectionStatusResponse]
 
 
 class CalendarSelectionRequest(StrictModel):

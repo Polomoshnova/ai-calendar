@@ -72,8 +72,8 @@ pull-reconciliation workflows exist, but no runtime workflow uses them yet.
 - [x] Half-open reserved-interval repository query with `exclude_plan_id`
 
 These components are available to future application services. They are not
-connected to Google event creation, polling, or reconciliation, and the current
-Google connection model still permits one connection per user/provider.
+connected to Google event creation, polling, or reconciliation. A user may
+connect multiple Google accounts; each external account is unique per user.
 
 ### Planned
 
@@ -129,9 +129,8 @@ docker compose ps
 alembic upgrade head
 ```
 
-The container exposes PostgreSQL at `localhost:5432`. The latest migration file
-is `20260728_05_calendar_sync_domain_foundation.py`; its Alembic revision is
-`20260728_07`, following `20260728_06`.
+The container exposes PostgreSQL at `localhost:5432`. The latest migration is
+`20260730_08_multi_account_google_connections.py`, revision `20260730_08`.
 
 Useful migration commands:
 

@@ -5,7 +5,7 @@ import httpx
 import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.calendar_integration.errors import CalendarAuthorizationError
@@ -21,7 +21,13 @@ from app.calendar_integration.service import (
     store_google_connection,
 )
 from app.core.config import get_settings
-from app.models import CalendarOAuthState, User
+from app.models import (
+    CalendarConnection,
+    CalendarOAuthState,
+    CalendarProviderName,
+    CalendarSelection,
+    User,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -107,6 +113,8 @@ def test_connection_tokens_are_encrypted_and_repr_is_redacted(
     connection = store_google_connection(
         db_session,
         user_id=user.id,
+        provider_account_id="account-1",
+        provider_account_email="account-1@example.com",
         tokens=GoogleTokenSet(
             access_token="access-secret",
             refresh_token="refresh-secret",
@@ -122,3 +130,112 @@ def test_connection_tokens_are_encrypted_and_repr_is_redacted(
     assert cipher.decrypt(connection.refresh_token_encrypted or "") == "refresh-secret"
     assert "access-secret" not in repr(connection)
     assert "refresh-secret" not in repr(connection)
+
+
+def token_set(access_token: str, refresh_token: str | None = None) -> GoogleTokenSet:
+    return GoogleTokenSet(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_at=datetime(2026, 7, 27, 9, tzinfo=UTC),
+        scopes=("https://www.googleapis.com/auth/calendar.readonly",),
+    )
+
+
+def test_one_user_can_connect_two_google_accounts_and_reconnect_one(
+    db_session: Session, user: User
+) -> None:
+    cipher = FernetTokenCipher(Fernet.generate_key().decode())
+    first = store_google_connection(
+        db_session,
+        user_id=user.id,
+        provider_account_id="google-account-1",
+        provider_account_email="one@example.com",
+        tokens=token_set("first-access", "first-refresh"),
+        cipher=cipher,
+    )
+    second = store_google_connection(
+        db_session,
+        user_id=user.id,
+        provider_account_id="google-account-2",
+        provider_account_email="two@example.com",
+        tokens=token_set("second-access", "second-refresh"),
+        cipher=cipher,
+    )
+    reconnected = store_google_connection(
+        db_session,
+        user_id=user.id,
+        provider_account_id="google-account-1",
+        provider_account_email="updated-one@example.com",
+        tokens=token_set("updated-access"),
+        cipher=cipher,
+    )
+
+    assert first.id != second.id
+    assert reconnected.id == first.id
+    assert reconnected.provider_account_email == "updated-one@example.com"
+    assert cipher.decrypt(reconnected.access_token_encrypted or "") == "updated-access"
+    assert cipher.decrypt(reconnected.refresh_token_encrypted or "") == "first-refresh"
+    assert db_session.scalar(select(func.count()).select_from(CalendarConnection)) == 2
+
+
+def test_two_users_can_connect_the_same_google_account(
+    db_session: Session, user: User
+) -> None:
+    cipher = FernetTokenCipher(Fernet.generate_key().decode())
+    other = User(email="other-google-owner@example.com", timezone="UTC")
+    db_session.add(other)
+    db_session.commit()
+
+    first = store_google_connection(
+        db_session,
+        user_id=user.id,
+        provider_account_id="shared-google-account",
+        provider_account_email="shared@example.com",
+        tokens=token_set("first"),
+        cipher=cipher,
+    )
+    second = store_google_connection(
+        db_session,
+        user_id=other.id,
+        provider_account_id="shared-google-account",
+        provider_account_email="shared@example.com",
+        tokens=token_set("second"),
+        cipher=cipher,
+    )
+
+    assert first.id != second.id
+
+
+def test_reconnect_claims_only_a_verified_matching_legacy_connection(
+    db_session: Session, user: User
+) -> None:
+    cipher = FernetTokenCipher(Fernet.generate_key().decode())
+    legacy = CalendarConnection(
+        user_id=user.id,
+        provider=CalendarProviderName.google,
+        provider_account_id=None,
+        access_token_encrypted=cipher.encrypt("legacy-access"),
+        scopes=[],
+    )
+    legacy.selections.append(
+        CalendarSelection(
+            external_calendar_id="verified-legacy@example.com",
+            display_name="Primary",
+            primary=True,
+            include_in_availability=True,
+        )
+    )
+    db_session.add(legacy)
+    db_session.commit()
+
+    reconnected = store_google_connection(
+        db_session,
+        user_id=user.id,
+        provider_account_id="verified-legacy@example.com",
+        provider_account_email="verified-legacy@example.com",
+        tokens=token_set("updated-legacy-access"),
+        cipher=cipher,
+    )
+
+    assert reconnected.id == legacy.id
+    assert reconnected.provider_account_id == "verified-legacy@example.com"

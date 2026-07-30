@@ -2,7 +2,7 @@
 
 Last verified against code: 2026-07-28
 
-Latest verified Alembic revision: `20260728_07`
+Latest verified Alembic revision: `20260730_08`
 
 These decisions define intended product behavior. “Foundation implemented”
 means types, persistence, or pure policy exist without a runtime workflow.
@@ -13,7 +13,7 @@ means types, persistence, or pure policy exist without a runtime workflow.
 | Before apply, SchedulePlan and ScheduledSession remain application-owned. | A confirmed proposal must be durable before any provider event exists. | Confirmation and provider application are separate lifecycle stages. | Implemented. |
 | The application owns Task identity, title, priority, structure, planning metadata, and planning history. | Calendar events are execution artifacts, not the complete task model. | Reconciliation must preserve separate ownership boundaries. | Implemented for existing Task fields and SchedulePlan history. A category field does not currently exist. |
 | `ScheduledSession` is the synchronization unit, and `CalendarEventMapping` is the sole external identity and sync-state source. | Split tasks need independent provider events without polluting the planning entity. | Mapping persistence and partial apply behavior are required. | Foundation implemented; runtime mapping creation is planned. |
-| One task may have sessions in different Google accounts and calendars. | Work may span personal, team, or dedicated calendars. | Per-session credentials, ownership checks, and partial failures become more complex. | Snapshot and mapping shapes are per connection/session. Current DB uniqueness permits one connection per user/provider, so multi-account Google writes remain planned. |
+| One task may have sessions in different Google accounts and calendars. | Work may span personal, team, or dedicated calendars. | Per-session credentials, ownership checks, and partial failures become more complex. | Snapshot and mapping shapes are per connection/session. Multiple connections are supported; multi-account Google writes remain planned. |
 | Busy sources and write targets are separate concepts. | Calendars considered for conflicts need not be the calendars receiving new events. | Both selections must be captured and hashed. | Implemented for new SchedulePlans; nullable snapshots preserve legacy compatibility. |
 | A user may choose a dedicated calendar for application-created tasks. | Separating generated work can improve visibility and control. | The chosen calendar may disappear or lose write access. | Calendar selection exists for availability; a dedicated write-target setting and apply UI are planned. |
 | Moving a session past the current deadline extends the deadline to the latest explicitly positioned, non-deleted session end. | User placement should not immediately make the task invalid. | Deadlines can move later without a separate reschedule. | Pure `deadline_after_external_move()` policy implemented; no pull workflow applies it. |
