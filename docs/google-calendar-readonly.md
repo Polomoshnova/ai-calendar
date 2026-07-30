@@ -1,8 +1,8 @@
 # Google Calendar read-only integration
 
 This internal integration reads availability on demand and passes merged,
-provider-neutral busy intervals to the existing deterministic preview. It does
-not read event contents and has no event create, update, or delete API.
+provider-neutral busy intervals to the deterministic preview. Explicit
+SchedulePlan Apply can create events; there is no event update or delete API.
 
 `CalendarProvider` is the provider-neutral boundary. The scheduler receives only
 generic `DateTimeInterval` values and never imports Google code. Connections and
@@ -10,8 +10,9 @@ selections are persisted; busy intervals and event data are not.
 
 OAuth state is short-lived, hashed, user-bound, and single-use. Tokens are
 Fernet-encrypted with `CALENDAR_TOKEN_ENCRYPTION_KEY`, with no plaintext
-fallback. The only scope is
-`https://www.googleapis.com/auth/calendar.readonly`.
+fallback. The scopes are `calendar.readonly` for availability and calendar
+discovery plus `calendar.events` for explicit event creation. No broader
+Calendar scope is requested.
 
 ## Environment
 
@@ -19,7 +20,7 @@ fallback. The only scope is
 GOOGLE_CALENDAR_CLIENT_ID=
 GOOGLE_CALENDAR_CLIENT_SECRET=
 GOOGLE_CALENDAR_REDIRECT_URI=http://127.0.0.1:8000/internal/api/calendar/google/oauth/callback
-GOOGLE_CALENDAR_SCOPES=https://www.googleapis.com/auth/calendar.readonly
+GOOGLE_CALENDAR_SCOPES="https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events"
 CALENDAR_TOKEN_ENCRYPTION_KEY=
 ```
 
@@ -82,11 +83,11 @@ returned or logged.
 ## Limitations
 
 - Internal endpoints; multiple Google accounts may be connected per user.
-- No event content, writes, push notifications, or incremental synchronization.
+- No event updates, deletes, push notifications, or incremental synchronization.
 - On-demand FreeBusy only; intervals are not persisted.
 - No production OAuth verification work in this change.
 
 The repository contains a provider-neutral synchronization domain foundation,
-but it is not connected to this adapter. In particular, this integration does
-not populate `CalendarEventMapping`, record `ExternalCalendarChange`, invoke
-consistency checking, or apply deadline changes.
+Apply populates `CalendarEventMapping`. No runtime records
+`ExternalCalendarChange`, invokes consistency checking, or applies deadline
+changes.

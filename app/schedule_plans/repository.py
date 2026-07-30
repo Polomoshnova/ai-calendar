@@ -35,7 +35,11 @@ def get_schedule_plan(
     statement = (
         select(SchedulePlan)
         .where(SchedulePlan.id == plan_id)
-        .options(selectinload(SchedulePlan.sessions))
+        .options(
+            selectinload(SchedulePlan.sessions).selectinload(
+                ScheduledSession.calendar_event_mapping
+            )
+        )
     )
     if for_update:
         statement = statement.with_for_update()

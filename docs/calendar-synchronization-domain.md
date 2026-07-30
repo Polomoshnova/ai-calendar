@@ -68,7 +68,7 @@ as an availability source and may include a timezone-aware capture time.
 `SessionWriteTargetSnapshot` identifies the connection/provider/account/calendar
 target for one session. The write-target type can represent different
 connections for different sessions. Multiple Google accounts may belong to one
-user, although no apply workflow consumes these snapshots.
+user, and Apply consumes these immutable targets without regenerating them.
 
 `calendar_context_hash()` recursively canonicalizes mappings and unordered
 collections, serializes compact JSON, and returns a SHA-256 digest. Reordering

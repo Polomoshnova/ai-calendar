@@ -51,7 +51,8 @@ Google events.
 
 Google Calendar is an availability source today. Runtime behavior includes
 OAuth, encrypted credentials, calendar selection, FreeBusy, calendar-backed
-preview, and plan revalidation. It requests only read-only scope.
+preview, plan revalidation, and explicit plan application. OAuth requests
+read-only discovery/availability scope plus the minimal event creation scope.
 
 The synchronization foundation defines the later ownership model:
 

@@ -57,8 +57,9 @@ pull-reconciliation workflows exist, but no runtime workflow uses them yet.
 - [x] Google OAuth with hashed state and encrypted credentials
 - [x] Calendar listing, selection, FreeBusy, and calendar-backed preview
 - [x] Calendar synchronization domain and persistence foundation
+- [x] Explicit SchedulePlan apply with per-session Google event mappings
 
-### Foundation implemented, runtime flow pending
+### Foundation implemented, synchronization runtime pending
 
 - [x] One `CalendarEventMapping` per `ScheduledSession`, with provider event
   identity, etag, provider timestamps, sync status, and diagnostics
@@ -71,14 +72,14 @@ pull-reconciliation workflows exist, but no runtime workflow uses them yet.
 - [x] Multi-connection/account write-target representation in snapshots
 - [x] Half-open reserved-interval repository query with `exclude_plan_id`
 
-These components are available to future application services. They are not
-connected to Google event creation, polling, or reconciliation. A user may
-connect multiple Google accounts; each external account is unique per user.
+These components support Apply and future synchronization services. Pull
+reconciliation remains unimplemented. A user may connect multiple Google
+accounts; each external account is unique per user.
 
 ### Planned
 
-- [ ] `ApplySchedulePlan`
-- [ ] Google Calendar event creation
+- [x] `ApplySchedulePlan`
+- [x] Google Calendar event creation during explicit apply
 - [ ] Pull reconciliation of applied sessions
 - [ ] Handling externally moved, resized, and deleted Google events
 - [ ] Explicit backlog behavior

@@ -5,12 +5,15 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.dependencies import DatabaseSession
+from app.calendar_integration.errors import CalendarIntegrationError
 from app.calendar_integration.models import CalendarBusyResult
 from app.calendar_integration.service import query_connection_busy
 from app.core.config import Settings, get_settings
 from app.internal.calendar_router import CalendarRuntimeDependency
 from app.internal.dependencies import InternalToolsEnabled
 from app.models import CalendarConnection, User
+from app.schedule_plans.apply import apply_schedule_plan
+from app.schedule_plans.apply_schemas import ApplySchedulePlanResult
 from app.schedule_plans.errors import (
     InvalidPlanTransitionError,
     SchedulePlanNotFoundError,
@@ -104,7 +107,38 @@ def _http_error(exc: Exception) -> HTTPException:
         return HTTPException(status_code=409, detail=str(exc))
     if isinstance(exc, SchedulePlanValidationError):
         return HTTPException(status_code=422, detail=str(exc))
+    if isinstance(exc, CalendarIntegrationError):
+        return HTTPException(status_code=502, detail=exc.to_detail())
     return HTTPException(status_code=500, detail="Unexpected schedule plan failure")
+
+
+@router.post(
+    "/schedule-plans/{plan_id}/apply",
+    response_model=ApplySchedulePlanResult,
+)
+async def apply_plan(
+    plan_id: uuid.UUID,
+    user_id: uuid.UUID,
+    session: DatabaseSession,
+    runtime: CalendarRuntimeDependency,
+    _enabled: InternalToolsEnabled,
+) -> ApplySchedulePlanResult:
+    try:
+        return await apply_schedule_plan(
+            session,
+            user_id=user_id,
+            plan_id=plan_id,
+            provider=runtime.provider,
+            oauth_client=runtime.oauth,
+            cipher=runtime.cipher,
+        )
+    except (
+        InvalidPlanTransitionError,
+        SchedulePlanNotFoundError,
+        SchedulePlanValidationError,
+        CalendarIntegrationError,
+    ) as exc:
+        raise _http_error(exc) from exc
 
 
 @router.post(

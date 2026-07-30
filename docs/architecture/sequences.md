@@ -91,31 +91,28 @@ sequenceDiagram
     API-->>Client: Read-only validation result
 ```
 
-## ApplySchedulePlan — planned
-
-No apply endpoint, Google write scope, or event creation client exists.
+## ApplySchedulePlan
 
 ```mermaid
 sequenceDiagram
     actor Client
     participant Apply as ApplySchedulePlan
-    participant Reval as Readiness check
     participant Google as Google Calendar write API
     participant DB as PostgreSQL
 
     Client-->>Apply: Apply confirmed plan
-    Apply-->>Reval: Verify current valid revalidation and reservations
-    Reval-->>Apply: Ready
+    Apply-->>DB: Validate stored targets and claim applying
     loop Each ScheduledSession
         Apply-->>Google: Create idempotent event
         Google-->>Apply: Event ID, calendar ID, etag, updated time
-        Apply-->>DB: Insert CalendarEventMapping
+        Apply-->>DB: Insert CalendarEventMapping and commit
     end
-    Apply-->>DB: Mark plan applied or partially_applied
+    Apply-->>DB: Mark plan applied, partially_applied, or failed
     Apply-->>Client: Apply result
 ```
 
-Every arrow is planned.
+Provider calls continue after individual session failures. Existing mappings
+are skipped on retry.
 
 ## Pull reconciliation — planned
 
