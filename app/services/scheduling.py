@@ -8,6 +8,7 @@ from app.availability import TimeInterval, calculate_free_intervals
 from app.domain.preferences import SchedulingPreferences
 from app.domain.tasks import TaskStatus
 from app.models import Task, User
+from app.schedule_plans.repository import list_reserved_intervals
 from app.scheduling import SchedulerPreferences, SchedulerResult, SchedulingTask
 from app.scheduling.scheduler import schedule_tasks
 from app.services.preferences import load_scheduling_preferences
@@ -36,9 +37,18 @@ def preview_schedule(
     planning = planning_window.as_utc()
     tasks = _load_preview_tasks(session, user_id, planning)
     stored_preferences = load_scheduling_preferences(session, user_id)
+    reserved_intervals = list_reserved_intervals(
+        session,
+        user_id=user_id,
+        start=planning.start,
+        end=planning.end,
+    )
+    combined_busy_intervals = busy_intervals + tuple(
+        TimeInterval(item.start, item.end) for item in reserved_intervals
+    )
     return generate_schedule_preview(
         planning_window=planning,
-        busy_intervals=busy_intervals,
+        busy_intervals=combined_busy_intervals,
         tasks=tuple(_to_scheduling_task(task) for task in tasks),
         preferences=stored_preferences,
     )

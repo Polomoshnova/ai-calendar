@@ -20,6 +20,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
 if TYPE_CHECKING:
+    from app.models.calendar_sync import CalendarEventMapping
     from app.models.user import User
 
 
@@ -75,6 +76,9 @@ class CalendarConnection(Base):
     user: Mapped["User"] = relationship(back_populates="calendar_connections")
     selections: Mapped[list["CalendarSelection"]] = relationship(
         back_populates="connection", cascade="all, delete-orphan"
+    )
+    event_mappings: Mapped[list["CalendarEventMapping"]] = relationship(
+        back_populates="calendar_connection", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:
