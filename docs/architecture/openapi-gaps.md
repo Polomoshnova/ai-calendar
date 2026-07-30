@@ -40,6 +40,9 @@ The following paths were verified from router prefixes and decorators:
 - SchedulePlan response compatibility fields can expose mapping-derived
   external identity when a mapping exists, but the schema does not explain that
   `CalendarEventMapping` is the persistence source.
+- Apply exposes a structured internal
+  `POST /internal/api/schedule-plans/{plan_id}/apply` response; production
+  authentication and public API exposure remain pending.
 - Revalidation OpenAPI does not state prominently that
   `include_internal_busy=true` remains provider-only in the current service.
 - OAuth and calendar route schemas are safe, but their generated documentation

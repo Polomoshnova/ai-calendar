@@ -16,21 +16,21 @@ This roadmap records dependency order, not delivery dates.
 | Google read-only integration | Use real calendar availability. | OAuth, encrypted credentials, calendar selection, FreeBusy. | No event content or writes. |
 | SchedulePlan revalidation | Check immutable sessions against fresh provider busy data. | Confirmed plan, active connection, FreeBusy. | No rescheduling or apply. |
 | Reserved interval repository | Define which persisted plans block time. | SchedulePlan statuses and sessions. | Integrated with database-backed preview and revalidation. |
-| Calendar synchronization domain foundation | Define mappings, change audits, snapshots, hashing, consistency, and deadline policy. | Revision `20260728_07`. | No apply, polling, or runtime reconciliation. |
+| Calendar synchronization domain foundation | Define mappings, change audits, snapshots, hashing, consistency, and deadline policy. | Revision `20260728_07`. | Apply consumes mappings and snapshots; no polling or runtime reconciliation. |
 
 ## Next
 
-### 1. ApplySchedulePlan
+### 1. ApplySchedulePlan — implemented
 
 Purpose: perform final readiness validation and explicitly apply a confirmed
 plan.
 
-Dependencies: fresh revalidation, immutable session hash, active connection,
-write target snapshots, and Google write scope.
+Dependencies: immutable write target snapshots, active connections, and the
+minimal Google event write scope.
 
 Non-goals: rescheduling or silently repairing conflicts.
 
-### 2. Mapping persistence during apply
+### 2. Mapping persistence during apply — implemented
 
 Purpose: create one `CalendarEventMapping` for every successfully created
 Google event.
@@ -40,7 +40,7 @@ write target.
 
 Non-goals: duplicating external identity on `ScheduledSession`.
 
-### 3. Partial apply and idempotent retry
+### 3. Partial apply and idempotent retry — implemented
 
 Purpose: make `partially_applied` and retry transitions operational without
 duplicating events.

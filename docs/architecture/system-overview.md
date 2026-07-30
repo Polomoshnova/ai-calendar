@@ -95,8 +95,8 @@ calendar or scheduler integration.
 
 `app/workflows/task_to_schedule_preview.py` composes intake, review, deterministic
 mapping, and preview generation for internal use. The word “application” here
-means application-layer orchestration; `ApplySchedulePlan`, which will create
-provider events, is not implemented.
+means application-layer orchestration. `ApplySchedulePlan` separately creates
+provider events from confirmed plans and persists mappings.
 
 ### Deterministic scheduler
 
@@ -194,7 +194,7 @@ flowchart LR
     SyncDomain[Calendar synchronization domain foundation]
     DB[(PostgreSQL)]
     Google[Google Calendar]
-    Apply[ApplySchedulePlan - planned]
+    Apply[ApplySchedulePlan]
     PullSync[Pull reconciliation - planned]
 
     User --> UI
@@ -239,9 +239,9 @@ plan's intervals reserving. Revalidation loads the immutable plan, calls Google
 FreeBusy through the active CalendarConnection, verifies that the plan did not
 change during I/O, and persists a `SchedulePlanRevalidation`.
 
-The calendar synchronization models and pure policies currently have no runtime
-caller. Future apply will persist mappings; future pull reconciliation will
-persist external changes and consistency outcomes.
+Apply persists mappings. The remaining synchronization models and pure policies
+have no runtime caller; future pull reconciliation will persist external
+changes and consistency outcomes.
 
 ## Source-of-truth model
 
@@ -250,12 +250,11 @@ persist external changes and consistency outcomes.
 | Before confirmation | `TaskDraftV2` plus the user's pending `DraftReview` | AI output is a proposal and is not durable task intent. |
 | After `ConfirmedTask` | The clean confirmed application value | It contains reviewed task meaning without AI confidence metadata. The composed workflow remains stateless. |
 | After SchedulePlan confirmation | The application database | `SchedulePlan` and immutable `ScheduledSession` blocks are the approved proposal and reserve time. No Google event exists yet. |
-| After future successful Google event creation | Google for actual event time, calendar placement, and existence; the application for Task metadata and planning history | This boundary is accepted in the ADR but is not active because apply is not implemented. |
+| After successful Google event creation | Google for actual event time, calendar placement, and existence; the application for Task metadata and planning history | Apply activates this boundary for each successfully mapped session. |
 
 ## Current limitations
 
-- There is no Google event creation, update, or deletion.
-- There is no ApplySchedulePlan service or endpoint.
+- There is no Google event update or deletion.
 - There is no pull reconciliation, polling loop, webhook, or push trigger.
 - Reserved SchedulePlan intervals are merged into database-backed scheduling
   preview and revalidation.
@@ -283,8 +282,7 @@ the deterministic scheduler input.
 ### SchedulePlan
 
 Applying-related transitions are present in the domain transition table, but
-the diagram labels them as planned because no apply service or endpoint drives
-them:
+Apply now drives the applying transitions:
 
 ```mermaid
 stateDiagram-v2
@@ -295,12 +293,12 @@ stateDiagram-v2
     confirmed --> revalidation_required: conflict or partial provider result
     revalidation_required --> confirmed: valid revalidation
     revalidation_required --> obsolete
-    confirmed --> applying: planned apply workflow
-    applying --> applied: planned
-    applying --> partially_applied: planned
-    applying --> failed: planned
-    partially_applied --> applying: planned retry
-    partially_applied --> failed: planned
+    confirmed --> applying: apply workflow
+    applying --> applied
+    applying --> partially_applied
+    applying --> failed
+    partially_applied --> applying: retry
+    partially_applied --> failed
 ```
 
 `confirmed` means the user approved the exact stored sessions and those
@@ -344,15 +342,11 @@ at `/docs` and OpenAPI JSON at `/openapi.json` while the application is running.
 
 ## Near-term roadmap
 
-1. Add an explicit `ApplySchedulePlan` application service and final readiness
-   checks.
-2. Create Google events with per-session idempotency and persist one
-   `CalendarEventMapping` per successfully applied session.
-3. Add pull reconciliation that reads mapped events, records
+1. Add pull reconciliation that reads mapped events, records
    `ExternalCalendarChange`, and invokes the pure consistency checker.
-4. Apply the deadline extension policy after externally moved sessions, with
+2. Apply the deadline extension policy after externally moved sessions, with
    explicit audit behavior.
-5. Define backlog semantics; externally deleted sessions must not silently
+3. Define backlog semantics; externally deleted sessions must not silently
    reappear.
 6. Add authenticated product APIs and a basic product UI.
 7. Consider push notifications only as an optional trigger after pull

@@ -12,6 +12,7 @@ from app.calendar_integration.security import FernetTokenCipher
 from app.core.config import Settings
 
 READ_ONLY_SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
+EVENT_WRITE_SCOPE = "https://www.googleapis.com/auth/calendar.events"
 
 
 @dataclass(frozen=True)
@@ -33,9 +34,9 @@ def build_calendar_runtime(
             "Google Calendar integration is not configured"
         )
     scopes = tuple(settings.google_calendar_scopes.split())
-    if scopes != (READ_ONLY_SCOPE,):
+    if set(scopes) != {READ_ONLY_SCOPE, EVENT_WRITE_SCOPE}:
         raise CalendarConfigurationError(
-            "Google Calendar must use only the calendar.readonly scope"
+            "Google Calendar must use calendar.readonly and calendar.events scopes"
         )
     oauth = GoogleOAuthClient(
         http_client,

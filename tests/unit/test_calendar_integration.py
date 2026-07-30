@@ -16,6 +16,7 @@ from app.calendar_integration.mapper import normalize_calendar_busy_intervals
 from app.calendar_integration.models import (
     CalendarBusyInterval,
     CalendarBusyResult,
+    CalendarEventCreateRequest,
     CalendarProviderConnection,
     ExternalCalendar,
 )
@@ -201,6 +202,57 @@ def test_free_busy_batches_more_than_fifty_calendars() -> None:
 
     assert [len(batch) for batch in batches] == [50, 1]
     assert result.intervals == []
+
+
+def test_google_create_event_uses_exact_target_and_returns_typed_result() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        body = __import__("json").loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "id": body["id"],
+                "etag": '"revision-1"',
+                "updated": "2026-07-30T08:01:00+00:00",
+                "start": body["start"],
+                "end": body["end"],
+            },
+        )
+
+    async def run() -> tuple[str, str]:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            result = await GoogleCalendarProvider(client).create_event(
+                CalendarProviderConnection(
+                    connection_id="00000000-0000-0000-0000-000000000001",
+                    access_token="token",
+                ),
+                CalendarEventCreateRequest(
+                    connection_id="00000000-0000-0000-0000-000000000001",
+                    provider_account_id="account-1",
+                    calendar_id="team/calendar@example.com",
+                    event_id="1234567890abcdef",
+                    title="Prepare report",
+                    description="Draft it.",
+                    start=NOW,
+                    end=NOW + timedelta(hours=1),
+                    timezone="Europe/Warsaw",
+                    task_id=None,
+                    schedule_plan_id="00000000-0000-0000-0000-000000000002",
+                    scheduled_session_id="00000000-0000-0000-0000-000000000003",
+                ),
+            )
+            return result.external_event_id, result.calendar_id
+
+    assert asyncio.run(run()) == ("1234567890abcdef", "team/calendar@example.com")
+    assert "team%2Fcalendar%40example.com" in str(requests[0].url)
+    body = __import__("json").loads(requests[0].content)
+    assert body["start"] == {
+        "dateTime": NOW.isoformat(),
+        "timeZone": "Europe/Warsaw",
+    }
+    assert body["end"]["dateTime"] == (NOW + timedelta(hours=1)).isoformat()
 
 
 def test_busy_interval_requires_timezone_and_valid_order() -> None:

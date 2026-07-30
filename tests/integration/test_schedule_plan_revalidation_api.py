@@ -829,12 +829,15 @@ def test_missing_plan_and_connection_return_404(
     assert missing_connection.status_code == 404
 
 
-def test_no_calendar_write_scope_or_event_endpoint(client: TestClient) -> None:
+def test_no_direct_calendar_event_endpoint(client: TestClient) -> None:
     from app.core.config import Settings
 
-    assert Settings().google_calendar_scopes == (
-        "https://www.googleapis.com/auth/calendar.readonly"
-    )
+    default_scopes = Settings.model_fields["google_calendar_scopes"].default
+    assert isinstance(default_scopes, str)
+    assert set(default_scopes.split()) == {
+        "https://www.googleapis.com/auth/calendar.readonly",
+        "https://www.googleapis.com/auth/calendar.events",
+    }
     paths = client.get("/openapi.json").json()["paths"]
     assert not any(
         "event" in path.lower()

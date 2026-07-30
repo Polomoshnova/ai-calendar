@@ -145,14 +145,31 @@ The reservation query is implemented and tested. Database-backed scheduling
 preview merges these intervals into its busy input. Revalidation checks them
 alongside provider FreeBusy while excluding the current plan.
 
+## Apply
+
+`POST /internal/api/schedule-plans/{plan_id}/apply?user_id=...` applies a
+confirmed plan. It validates every unapplied session against the immutable
+`write_targets_snapshot`, atomically claims the plan as `applying`, creates one
+Google event per unmapped session, persists each successful
+`CalendarEventMapping`, and finalizes the plan as `applied`,
+`partially_applied`, or `failed`.
+
+Existing mappings are the primary idempotency check. Google insert requests use
+the stable ScheduledSession UUID as the provider event ID, and an insert
+conflict is treated as the same event. Database uniqueness continues to enforce
+one mapping per ScheduledSession and unique provider event identity. A crash
+after Google accepts an event but before its mapping commits can be recovered by
+retrying the same stable event ID. Apply does not claim general exactly-once
+delivery, because an unusable provider response can still leave an external
+event without a local mapping.
+
+Apply does not regenerate snapshots, run the scheduler, reschedule failures,
+delete external events as compensation, or release reservations.
+
 ## Current limitations
 
 - Internal endpoints only; no production authentication.
-- No Google Calendar event creation, update, or deletion.
-- No Calendar write scope.
+- No Google Calendar event update or deletion.
 - No FreeBusy revalidation on confirmation.
-- No apply endpoint.
 - No session editing.
 - No two-way synchronization or push notifications.
-- Applying-related lifecycle states exist, but there is no apply service or
-  endpoint.

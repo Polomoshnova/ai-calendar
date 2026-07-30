@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from pydantic import ValidationError
@@ -15,6 +16,8 @@ from app.calendar_integration.models import (
     CalendarAccountIdentity,
     CalendarBusyInterval,
     CalendarBusyResult,
+    CalendarEventCreateRequest,
+    CalendarEventCreateResult,
     CalendarProviderConnection,
     CalendarQueryError,
     ExternalCalendar,
@@ -22,6 +25,9 @@ from app.calendar_integration.models import (
 
 CALENDAR_LIST_ENDPOINT = "https://www.googleapis.com/calendar/v3/users/me/calendarList"
 FREE_BUSY_ENDPOINT = "https://www.googleapis.com/calendar/v3/freeBusy"
+EVENTS_ENDPOINT = (
+    "https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events"
+)
 FREE_BUSY_BATCH_SIZE = 50
 MAX_ATTEMPTS = 3
 
@@ -178,12 +184,74 @@ class GoogleCalendarProvider:
             errors=errors,
         )
 
+    async def create_event(
+        self,
+        connection: CalendarProviderConnection,
+        request: CalendarEventCreateRequest,
+    ) -> CalendarEventCreateResult:
+        fallback = {
+            "id": request.event_id,
+            "start": {"dateTime": request.start.isoformat()},
+            "end": {"dateTime": request.end.isoformat()},
+        }
+        payload = await self._request(
+            "POST",
+            EVENTS_ENDPOINT.format(calendar_id=quote(request.calendar_id, safe="")),
+            connection=connection,
+            params={"sendUpdates": "none"},
+            json={
+                "id": request.event_id,
+                "summary": request.title,
+                "description": request.description,
+                "start": {
+                    "dateTime": request.start.isoformat(),
+                    "timeZone": request.timezone,
+                },
+                "end": {
+                    "dateTime": request.end.isoformat(),
+                    "timeZone": request.timezone,
+                },
+                "extendedProperties": {
+                    "private": {
+                        "task_id": str(request.task_id) if request.task_id else "",
+                        "schedule_plan_id": str(request.schedule_plan_id),
+                        "scheduled_session_id": str(request.scheduled_session_id),
+                    }
+                },
+            },
+            conflict_payload=fallback,
+        )
+        try:
+            event_id = str(payload["id"])
+            start = datetime.fromisoformat(str(payload["start"]["dateTime"]))
+            end = datetime.fromisoformat(str(payload["end"]["dateTime"]))
+            updated = (
+                datetime.fromisoformat(str(payload["updated"]))
+                if payload.get("updated")
+                else None
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise CalendarProviderError(
+                "Google Calendar returned a malformed created event"
+            ) from exc
+        return CalendarEventCreateResult(
+            external_event_id=event_id,
+            calendar_id=request.calendar_id,
+            connection_id=request.connection_id,
+            provider_account_id=request.provider_account_id,
+            start=start,
+            end=end,
+            etag=str(payload["etag"]) if payload.get("etag") else None,
+            provider_updated_at=updated,
+        )
+
     async def _request(
         self,
         method: str,
         url: str,
         *,
         connection: CalendarProviderConnection,
+        conflict_payload: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         headers = {
@@ -205,6 +273,8 @@ class GoogleCalendarProvider:
                 raise CalendarAuthorizationError(
                     "Google Calendar access token was rejected"
                 )
+            if response.status_code == 409 and conflict_payload is not None:
+                return conflict_payload
             if response.status_code == 429:
                 if attempt == MAX_ATTEMPTS - 1:
                     raise CalendarRateLimitError("Google Calendar rate limit exceeded")

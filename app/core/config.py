@@ -19,7 +19,10 @@ class Settings(BaseSettings):
     google_calendar_redirect_uri: str = (
         "http://127.0.0.1:8000/internal/api/calendar/google/oauth/callback"
     )
-    google_calendar_scopes: str = "https://www.googleapis.com/auth/calendar.readonly"
+    google_calendar_scopes: str = (
+        "https://www.googleapis.com/auth/calendar.readonly "
+        "https://www.googleapis.com/auth/calendar.events"
+    )
     calendar_token_encryption_key: SecretStr | None = None
     google_calendar_timeout_seconds: float = 15.0
     schedule_plan_revalidation_ttl_seconds: int = 120

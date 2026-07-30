@@ -15,7 +15,6 @@ from app.calendar_integration.errors import (
 )
 from app.calendar_integration.google import (
     GoogleCalendarProvider,
-    GoogleOAuthClient,
     GoogleTokenSet,
 )
 from app.calendar_integration.models import (
@@ -23,7 +22,7 @@ from app.calendar_integration.models import (
     CalendarProviderConnection,
     ExternalCalendar,
 )
-from app.calendar_integration.protocols import TokenCipher
+from app.calendar_integration.protocols import CalendarOAuthClient, TokenCipher
 from app.models import (
     CalendarConnection,
     CalendarConnectionStatus,
@@ -41,7 +40,7 @@ def create_oauth_state(
     session: Session,
     *,
     user_id: uuid.UUID,
-    oauth_client: GoogleOAuthClient,
+    oauth_client: CalendarOAuthClient,
     now: datetime | None = None,
 ) -> tuple[str, datetime, str]:
     if session.get(User, user_id) is None:
@@ -187,7 +186,7 @@ async def connection_credentials(
     connection: CalendarConnection,
     *,
     cipher: TokenCipher,
-    oauth_client: GoogleOAuthClient,
+    oauth_client: CalendarOAuthClient,
     force_refresh: bool = False,
     now: datetime | None = None,
 ) -> CalendarProviderConnection:
@@ -246,7 +245,7 @@ async def list_connection_calendars(
     connection: CalendarConnection,
     *,
     provider: GoogleCalendarProvider,
-    oauth_client: GoogleOAuthClient,
+    oauth_client: CalendarOAuthClient,
     cipher: TokenCipher,
 ) -> list[ExternalCalendar]:
     credentials = await connection_credentials(
@@ -290,7 +289,7 @@ async def replace_calendar_selections(
     *,
     calendar_ids: list[str],
     provider: GoogleCalendarProvider,
-    oauth_client: GoogleOAuthClient,
+    oauth_client: CalendarOAuthClient,
     cipher: TokenCipher,
 ) -> list[CalendarSelection]:
     unique_ids = list(dict.fromkeys(calendar_ids))
@@ -332,7 +331,7 @@ async def query_connection_busy(
     time_max: datetime,
     timezone: str,
     provider: GoogleCalendarProvider,
-    oauth_client: GoogleOAuthClient,
+    oauth_client: CalendarOAuthClient,
     cipher: TokenCipher,
 ) -> tuple[list[str], CalendarBusyResult]:
     resolved_ids = (
@@ -391,7 +390,7 @@ async def disconnect_connection(
     session: Session,
     connection: CalendarConnection,
     *,
-    oauth_client: GoogleOAuthClient,
+    oauth_client: CalendarOAuthClient,
     cipher: TokenCipher,
 ) -> None:
     token_encrypted = (

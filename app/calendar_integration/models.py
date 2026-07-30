@@ -20,6 +20,40 @@ class CalendarAccountIdentity(StrictModel):
     provider_account_email: str | None = Field(default=None, max_length=320)
 
 
+class CalendarEventCreateRequest(StrictModel):
+    connection_id: uuid.UUID
+    provider_account_id: str = Field(min_length=1, max_length=255)
+    calendar_id: str = Field(min_length=1)
+    event_id: str = Field(min_length=5, max_length=1024)
+    title: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    start: datetime
+    end: datetime
+    timezone: str
+    task_id: uuid.UUID | None = None
+    schedule_plan_id: uuid.UUID
+    scheduled_session_id: uuid.UUID
+
+    @model_validator(mode="after")
+    def validate_event(self) -> Self:
+        _require_aware(self.start)
+        _require_aware(self.end)
+        if self.start.astimezone(UTC) >= self.end.astimezone(UTC):
+            raise ValueError("event start must be before end")
+        return self
+
+
+class CalendarEventCreateResult(StrictModel):
+    external_event_id: str = Field(min_length=1)
+    calendar_id: str = Field(min_length=1)
+    connection_id: uuid.UUID
+    provider_account_id: str = Field(min_length=1)
+    start: datetime
+    end: datetime
+    etag: str | None = None
+    provider_updated_at: datetime | None = None
+
+
 class ExternalCalendar(StrictModel):
     id: str = Field(min_length=1)
     name: str = Field(min_length=1)
