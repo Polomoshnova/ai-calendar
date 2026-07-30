@@ -29,9 +29,9 @@ def calendar_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> Generator[None, None, None]:
     monkeypatch.setenv("ENABLE_INTERNAL_TOOLS", "true")
-    monkeypatch.delenv("GOOGLE_CALENDAR_CLIENT_ID", raising=False)
-    monkeypatch.delenv("GOOGLE_CALENDAR_CLIENT_SECRET", raising=False)
-    monkeypatch.delenv("CALENDAR_TOKEN_ENCRYPTION_KEY", raising=False)
+    monkeypatch.setenv("GOOGLE_CALENDAR_CLIENT_ID", "")
+    monkeypatch.setenv("GOOGLE_CALENDAR_CLIENT_SECRET", "")
+    monkeypatch.setenv("CALENDAR_TOKEN_ENCRYPTION_KEY", "")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()

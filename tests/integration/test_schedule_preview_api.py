@@ -3,12 +3,20 @@ from datetime import UTC, datetime, time
 from typing import Any
 
 from fastapi.testclient import TestClient
+from httpx import Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.database import Base
 from app.domain.tasks import TaskPriority, TaskStatus
 from app.models import Task, User
+from app.schedule_plans.models import (
+    ScheduledSession,
+    ScheduledSessionStatus,
+    SchedulePlan,
+    SchedulePlanSource,
+    SchedulePlanStatus,
+)
 
 
 def dt(day: int, hour: int, minute: int = 0) -> datetime:
@@ -62,6 +70,177 @@ def add_task(
 def use_utc_preferences(session: Session, user: User) -> None:
     user.timezone = "UTC"
     session.commit()
+
+
+def add_plan_reservation(
+    session: Session,
+    user: User,
+    *,
+    status: SchedulePlanStatus,
+    start: datetime,
+    end: datetime,
+) -> SchedulePlan:
+    plan = SchedulePlan(
+        user_id=user.id,
+        plan_group_id=uuid.uuid4(),
+        source=SchedulePlanSource.manual_preview,
+        version=1,
+        status=status,
+        timezone="UTC",
+        planning_window_start=dt(20, 8),
+        planning_window_end=dt(20, 18),
+        scheduler_version="test",
+        idempotency_key=str(uuid.uuid4()),
+        confirmed_task_snapshot={},
+        scheduling_preferences_snapshot={},
+        busy_context_summary={},
+        preview_metadata={},
+    )
+    plan.sessions.append(
+        ScheduledSession(
+            title="Reserved session",
+            start=start,
+            end=end,
+            duration_minutes=int((end - start).total_seconds() // 60),
+            order=1,
+            status=ScheduledSessionStatus.confirmed,
+        )
+    )
+    session.add(plan)
+    session.commit()
+    return plan
+
+
+def scheduled_start(response: Response) -> str:
+    body = response.json()
+    assert len(body["scheduled_blocks"]) == 1
+    return str(body["scheduled_blocks"][0]["start"])
+
+
+def test_confirmed_plan_slot_is_excluded_from_preview(
+    client: TestClient,
+    db_session: Session,
+    user: User,
+) -> None:
+    use_utc_preferences(db_session, user)
+    add_task(db_session, user, "after-confirmed-reservation")
+    add_plan_reservation(
+        db_session,
+        user,
+        status=SchedulePlanStatus.confirmed,
+        start=dt(20, 9),
+        end=dt(20, 10),
+    )
+
+    response = client.post("/api/v1/scheduling/preview", json=preview_payload(user.id))
+
+    assert response.status_code == 200
+    assert scheduled_start(response) == "2026-07-20T10:00:00Z"
+
+
+def test_proposed_plan_slot_remains_available(
+    client: TestClient,
+    db_session: Session,
+    user: User,
+) -> None:
+    use_utc_preferences(db_session, user)
+    add_task(db_session, user, "proposed-does-not-reserve")
+    add_plan_reservation(
+        db_session,
+        user,
+        status=SchedulePlanStatus.proposed,
+        start=dt(20, 9),
+        end=dt(20, 10),
+    )
+
+    response = client.post("/api/v1/scheduling/preview", json=preview_payload(user.id))
+
+    assert response.status_code == 200
+    assert scheduled_start(response) == "2026-07-20T09:00:00Z"
+
+
+def test_obsolete_plan_slot_remains_available(
+    client: TestClient,
+    db_session: Session,
+    user: User,
+) -> None:
+    use_utc_preferences(db_session, user)
+    add_task(db_session, user, "obsolete-does-not-reserve")
+    add_plan_reservation(
+        db_session,
+        user,
+        status=SchedulePlanStatus.obsolete,
+        start=dt(20, 9),
+        end=dt(20, 10),
+    )
+
+    response = client.post("/api/v1/scheduling/preview", json=preview_payload(user.id))
+
+    assert response.status_code == 200
+    assert scheduled_start(response) == "2026-07-20T09:00:00Z"
+
+
+def test_another_users_plan_does_not_affect_preview(
+    client: TestClient,
+    db_session: Session,
+    user: User,
+) -> None:
+    use_utc_preferences(db_session, user)
+    add_task(db_session, user, "other-user-does-not-reserve")
+    other_user = User(
+        id=uuid.uuid4(),
+        email="other-preview-owner@example.com",
+        timezone="UTC",
+    )
+    db_session.add(other_user)
+    db_session.commit()
+    add_plan_reservation(
+        db_session,
+        other_user,
+        status=SchedulePlanStatus.confirmed,
+        start=dt(20, 9),
+        end=dt(20, 10),
+    )
+
+    response = client.post("/api/v1/scheduling/preview", json=preview_payload(user.id))
+
+    assert response.status_code == 200
+    assert scheduled_start(response) == "2026-07-20T09:00:00Z"
+
+
+def test_reservation_touching_preview_window_does_not_overlap(
+    client: TestClient,
+    db_session: Session,
+    user: User,
+) -> None:
+    use_utc_preferences(db_session, user)
+    add_task(
+        db_session,
+        user,
+        "touching-reservation",
+        earliest_start=dt(20, 10),
+    )
+    add_plan_reservation(
+        db_session,
+        user,
+        status=SchedulePlanStatus.confirmed,
+        start=dt(20, 9),
+        end=dt(20, 10),
+    )
+
+    response = client.post(
+        "/api/v1/scheduling/preview",
+        json=preview_payload(
+            user.id,
+            planning_window={
+                "start": dt(20, 10).isoformat(),
+                "end": dt(20, 18).isoformat(),
+            },
+        ),
+    )
+
+    assert response.status_code == 200
+    assert scheduled_start(response) == "2026-07-20T10:00:00Z"
 
 
 def test_successful_preview(
@@ -254,6 +433,11 @@ def test_preview_creates_no_database_rows(
         "calendar_connections",
         "calendar_oauth_states",
         "calendar_selections",
+        "calendar_event_mappings",
+        "external_calendar_changes",
+        "schedule_plans",
+        "schedule_plan_revalidations",
+        "scheduled_sessions",
     }
 
 

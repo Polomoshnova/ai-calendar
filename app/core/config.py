@@ -22,11 +22,14 @@ class Settings(BaseSettings):
     google_calendar_scopes: str = "https://www.googleapis.com/auth/calendar.readonly"
     calendar_token_encryption_key: SecretStr | None = None
     google_calendar_timeout_seconds: float = 15.0
+    schedule_plan_revalidation_ttl_seconds: int = 120
+    schedule_plan_revalidation_padding_minutes: int = 15
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @field_validator(
         "openai_api_key",
+        "google_calendar_client_id",
         "google_calendar_client_secret",
         "calendar_token_encryption_key",
         mode="before",

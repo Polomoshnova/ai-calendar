@@ -12,8 +12,13 @@ from app.core.database import get_db
 from app.main import app
 from app.models import (
     CalendarConnection,
+    CalendarEventMapping,
     CalendarOAuthState,
     CalendarSelection,
+    ExternalCalendarChange,
+    ScheduledSession,
+    SchedulePlan,
+    SchedulePlanRevalidation,
     Task,
     User,
     UserPreferences,
@@ -50,18 +55,28 @@ TestSessionLocal = sessionmaker(bind=test_engine, expire_on_commit=False)
 @pytest.fixture
 def db_session() -> Generator[Session, None, None]:
     with TestSessionLocal() as session:
+        session.execute(delete(ExternalCalendarChange))
+        session.execute(delete(CalendarEventMapping))
         session.execute(delete(CalendarSelection))
         session.execute(delete(CalendarOAuthState))
         session.execute(delete(CalendarConnection))
+        session.execute(delete(ScheduledSession))
+        session.execute(delete(SchedulePlanRevalidation))
+        session.execute(delete(SchedulePlan))
         session.execute(delete(Task))
         session.execute(delete(UserPreferences))
         session.execute(delete(User))
         session.commit()
         yield session
         session.rollback()
+        session.execute(delete(ExternalCalendarChange))
+        session.execute(delete(CalendarEventMapping))
         session.execute(delete(CalendarSelection))
         session.execute(delete(CalendarOAuthState))
         session.execute(delete(CalendarConnection))
+        session.execute(delete(ScheduledSession))
+        session.execute(delete(SchedulePlanRevalidation))
+        session.execute(delete(SchedulePlan))
         session.execute(delete(Task))
         session.execute(delete(UserPreferences))
         session.execute(delete(User))

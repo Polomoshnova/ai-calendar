@@ -1,4 +1,13 @@
-# Architecture Audit
+# Architecture audit
+
+> Historical note: this audit captures an earlier scheduling-foundation
+> milestone and is not the current capability inventory. See
+> [System overview](architecture/system-overview.md) for the implemented
+> architecture as of 2026-07-28.
+
+Last verified as a historical document: 2026-07-28
+
+Latest verified Alembic revision: `20260728_07`
 
 Дата аудита: 2026-07-23  
 Область: фактическая архитектура репозитория `ai-calendar` после Milestone 2C.

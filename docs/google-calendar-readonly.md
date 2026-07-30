@@ -85,3 +85,8 @@ returned or logged.
 - No event content, writes, push notifications, or incremental synchronization.
 - On-demand FreeBusy only; intervals are not persisted.
 - No production OAuth verification work in this change.
+
+The repository contains a provider-neutral synchronization domain foundation,
+but it is not connected to this adapter. In particular, this integration does
+not populate `CalendarEventMapping`, record `ExternalCalendarChange`, invoke
+consistency checking, or apply deadline changes.
