@@ -29,6 +29,24 @@ erDiagram
 `TaskDraftV2` and `ConfirmedTask` are intentionally absent from the ER diagram
 because they are not database entities.
 
+### External Calendar Policy Engine
+
+Purpose: transform an immutable `ExternalCalendarAggregate` and normalized
+external change into typed policy decisions.
+
+Ownership and mutability: pure domain values; aggregate, event state, sessions,
+conflict details, and decisions are immutable. The engine does not accept ORM
+entities or provider payloads.
+
+Decisions: no action, update session time, extend deadline, mark event missing,
+record a conflict, or flag an unsupported change. The engine identifies
+outside-window, overlap, and missing-event conflicts but does not reconcile or
+persist them.
+
+Status: domain evaluation is implemented. No application service invokes or
+processes its decisions yet. See
+[External Calendar Policy Engine](../external-calendar-policy-engine.md).
+
 ## Entities and contracts
 
 ### User
