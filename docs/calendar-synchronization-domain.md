@@ -4,7 +4,7 @@ Status: foundation implemented; runtime orchestration pending
 
 Last verified against code: 2026-07-28
 
-Latest verified Alembic revision: `20260728_07`
+Latest verified Alembic revision: `20260730_08`
 
 This document describes the synchronization types and persistence introduced by
 Alembic revision `20260728_07`. For the source-of-truth decision, see
@@ -67,9 +67,8 @@ write target.
 as an availability source and may include a timezone-aware capture time.
 `SessionWriteTargetSnapshot` identifies the connection/provider/account/calendar
 target for one session. The write-target type can represent different
-connections for different sessions, although the current Google connection
-constraint permits one connection per user/provider and no apply workflow
-consumes these snapshots.
+connections for different sessions. Multiple Google accounts may belong to one
+user, although no apply workflow consumes these snapshots.
 
 `calendar_context_hash()` recursively canonicalizes mappings and unordered
 collections, serializes compact JSON, and returns a SHA-256 digest. Reordering

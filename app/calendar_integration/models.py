@@ -15,6 +15,11 @@ class CalendarProviderConnection(StrictModel):
     access_token: SecretStr = Field(repr=False)
 
 
+class CalendarAccountIdentity(StrictModel):
+    provider_account_id: str = Field(min_length=1, max_length=255)
+    provider_account_email: str | None = Field(default=None, max_length=320)
+
+
 class ExternalCalendar(StrictModel):
     id: str = Field(min_length=1)
     name: str = Field(min_length=1)

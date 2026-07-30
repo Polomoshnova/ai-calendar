@@ -15,6 +15,7 @@ from app.calendar_integration.api_models import (
     CalendarSelectionItem,
     CalendarSelectionRequest,
     CalendarSelectionsResponse,
+    ConnectionListResponse,
     ConnectionStatusResponse,
     FreeBusyRequest,
     FreeBusyResponse,
@@ -36,13 +37,18 @@ from app.calendar_integration.errors import (
     CalendarValidationError,
 )
 from app.calendar_integration.mapper import normalize_calendar_busy_intervals
-from app.calendar_integration.models import CalendarBusyInterval, CalendarBusyResult
+from app.calendar_integration.models import (
+    CalendarBusyInterval,
+    CalendarBusyResult,
+    CalendarProviderConnection,
+)
 from app.calendar_integration.runtime import CalendarRuntime, build_calendar_runtime
 from app.calendar_integration.service import (
     consume_oauth_state,
     create_oauth_state,
     disconnect_connection,
     list_connection_calendars,
+    list_owned_connections,
     owned_connection,
     query_connection_busy,
     replace_calendar_selections,
@@ -50,6 +56,7 @@ from app.calendar_integration.service import (
 )
 from app.core.config import Settings, get_settings
 from app.internal.dependencies import InternalToolsEnabled
+from app.models import CalendarConnection
 from app.schemas.scheduling import SchedulePreviewResponse
 from app.services.scheduling import generate_schedule_preview
 
@@ -103,9 +110,17 @@ async def oauth_callback(
         if not code:
             raise CalendarAuthorizationError("Missing authorization code")
         tokens = await runtime.oauth.exchange_code(code)
+        identity = await runtime.provider.get_account_identity(
+            CalendarProviderConnection(
+                connection_id=uuid.uuid4(),
+                access_token=tokens.access_token,
+            )
+        )
         connection = store_google_connection(
             session,
             user_id=oauth_state.user_id,
+            provider_account_id=identity.provider_account_id,
+            provider_account_email=identity.provider_account_email,
             tokens=tokens,
             cipher=runtime.cipher,
         )
@@ -121,21 +136,12 @@ async def oauth_callback(
         raise _http_error(exc) from exc
 
 
-@router.get("/connections/{connection_id}", response_model=ConnectionStatusResponse)
-def connection_status(
-    connection_id: uuid.UUID,
-    user_id: uuid.UUID,
-    session: DatabaseSession,
-    _enabled: InternalToolsEnabled,
-) -> ConnectionStatusResponse:
-    try:
-        connection = owned_connection(session, connection_id, user_id)
-    except CalendarIntegrationError as exc:
-        raise _http_error(exc) from exc
+def _connection_response(connection: CalendarConnection) -> ConnectionStatusResponse:
     return ConnectionStatusResponse(
         id=connection.id,
         provider="google",
         status=connection.status.value,
+        provider_account_id=connection.provider_account_id,
         provider_account_email=connection.provider_account_email,
         scopes=connection.scopes,
         created_at=connection.created_at,
@@ -147,6 +153,35 @@ def connection_status(
         last_successful_sync_at=connection.last_successful_sync_at,
         last_error_code=connection.last_error_code,
     )
+
+
+@router.get("/connections", response_model=ConnectionListResponse)
+def connections(
+    user_id: uuid.UUID,
+    session: DatabaseSession,
+    _enabled: InternalToolsEnabled,
+) -> ConnectionListResponse:
+    try:
+        records = list_owned_connections(session, user_id)
+    except CalendarIntegrationError as exc:
+        raise _http_error(exc) from exc
+    return ConnectionListResponse(
+        connections=[_connection_response(connection) for connection in records]
+    )
+
+
+@router.get("/connections/{connection_id}", response_model=ConnectionStatusResponse)
+def connection_status(
+    connection_id: uuid.UUID,
+    user_id: uuid.UUID,
+    session: DatabaseSession,
+    _enabled: InternalToolsEnabled,
+) -> ConnectionStatusResponse:
+    try:
+        connection = owned_connection(session, connection_id, user_id)
+    except CalendarIntegrationError as exc:
+        raise _http_error(exc) from exc
+    return _connection_response(connection)
 
 
 @router.delete("/connections/{connection_id}", status_code=204)

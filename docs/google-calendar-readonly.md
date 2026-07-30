@@ -81,7 +81,7 @@ returned or logged.
 
 ## Limitations
 
-- Internal endpoints and one Google account per user.
+- Internal endpoints; multiple Google accounts may be connected per user.
 - No event content, writes, push notifications, or incremental synchronization.
 - On-demand FreeBusy only; intervals are not persisted.
 - No production OAuth verification work in this change.

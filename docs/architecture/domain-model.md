@@ -2,7 +2,7 @@
 
 Last verified against code: 2026-07-28
 
-Latest verified Alembic revision: `20260728_07`
+Latest verified Alembic revision: `20260730_08`
 
 ## Overview
 
@@ -38,8 +38,8 @@ Purpose: owns Tasks, preferences, calendar connections, and SchedulePlans.
 Ownership and mutability: persistent and mutable. Email is unique; timezone is
 an IANA identifier and is the scheduling timezone authority.
 
-Relations: one user has many Tasks and SchedulePlans. The current calendar
-constraint allows one connection per `(user_id, provider)`.
+Relations: one user has many Tasks and SchedulePlans. Calendar connections are
+unique per `(user_id, provider, provider_account_id)`.
 
 Status: implemented.
 
@@ -180,9 +180,8 @@ Key invariants: one mapping per ScheduledSession and unique external identity
 within `(calendar_connection_id, calendar_id, external_event_id)`.
 
 One Task may eventually have sessions mapped to different accounts and
-calendars because targets are per session. The current Google connection
-constraint still permits only one connection per user/provider, so
-multi-account Google writing is not yet operational.
+calendars because targets are per session. Multiple Google accounts can be
+connected, but multi-account Google writing is not yet operational.
 
 Status: model and migration implemented; no runtime creator or reconciler.
 

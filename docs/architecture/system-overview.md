@@ -4,7 +4,7 @@ Status: current architecture
 
 Last verified against code: 2026-07-28
 
-Latest verified Alembic revision: `20260728_07`
+Latest verified Alembic revision: `20260730_08`
 
 ## Scope
 
@@ -137,9 +137,8 @@ availability. FreeBusy intervals and event contents are not persisted.
 
 SQLAlchemy models use UUID primary keys, timezone-aware timestamps, PostgreSQL
 enums, relational constraints, and JSONB snapshots. Alembic owns schema
-evolution. The current head is revision `20260728_07` in
-`20260728_05_calendar_sync_domain_foundation.py`, following
-`20260728_06`.
+evolution. The current head is revision `20260730_08` in
+`20260730_08_multi_account_google_connections.py`.
 
 Repository functions in `app/schedule_plans/repository.py` load plans and query
 reserved intervals. Reserving states are `confirmed`,
@@ -264,7 +263,8 @@ persist external changes and consistency outcomes.
 - There is no automatic rescheduling after external changes.
 - There is no backlog domain.
 - There is no authenticated product UI; the scheduling lab is internal only.
-- The current database allows one CalendarConnection per user/provider.
+- The database allows multiple CalendarConnections per user/provider and
+  prevents duplicate external accounts for the same user.
 
 ## Domain lifecycle
 

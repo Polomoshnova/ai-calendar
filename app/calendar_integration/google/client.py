@@ -12,6 +12,7 @@ from app.calendar_integration.errors import (
     CalendarUnavailableError,
 )
 from app.calendar_integration.models import (
+    CalendarAccountIdentity,
     CalendarBusyInterval,
     CalendarBusyResult,
     CalendarProviderConnection,
@@ -85,6 +86,24 @@ class GoogleCalendarProvider:
             if not next_token:
                 return calendars
             page_token = str(next_token)
+
+    async def get_account_identity(
+        self, connection: CalendarProviderConnection
+    ) -> CalendarAccountIdentity:
+        primary = [
+            calendar
+            for calendar in await self.list_calendars(connection)
+            if calendar.primary
+        ]
+        if len(primary) != 1:
+            raise CalendarProviderError(
+                "Google Calendar did not return one verified primary calendar"
+            )
+        account_id = primary[0].id
+        return CalendarAccountIdentity(
+            provider_account_id=account_id,
+            provider_account_email=account_id if "@" in account_id else None,
+        )
 
     async def query_busy_intervals(
         self,

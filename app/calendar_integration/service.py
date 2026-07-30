@@ -58,20 +58,10 @@ def create_oauth_state(
         )
     )
     session.commit()
-    existing_connection = session.scalar(
-        select(CalendarConnection).where(
-            CalendarConnection.user_id == user_id,
-            CalendarConnection.provider == CalendarProviderName.google,
-        )
-    )
-    prompt_consent = (
-        existing_connection is None
-        or existing_connection.refresh_token_encrypted is None
-    )
     return (
         raw_state,
         expires_at,
-        oauth_client.authorization_url(raw_state, prompt_consent=prompt_consent),
+        oauth_client.authorization_url(raw_state, prompt_consent=True),
     )
 
 
@@ -105,24 +95,49 @@ def store_google_connection(
     session: Session,
     *,
     user_id: uuid.UUID,
+    provider_account_id: str,
+    provider_account_email: str | None,
     tokens: GoogleTokenSet,
     cipher: TokenCipher,
 ) -> CalendarConnection:
+    if not provider_account_id.strip():
+        raise CalendarAuthorizationError(
+            "Google account identity is required before storing a connection"
+        )
     connection = session.scalar(
         select(CalendarConnection)
         .where(
             CalendarConnection.user_id == user_id,
             CalendarConnection.provider == CalendarProviderName.google,
+            CalendarConnection.provider_account_id == provider_account_id,
         )
         .with_for_update()
     )
     if connection is None:
+        connection = session.scalar(
+            select(CalendarConnection)
+            .join(CalendarSelection)
+            .where(
+                CalendarConnection.user_id == user_id,
+                CalendarConnection.provider == CalendarProviderName.google,
+                CalendarConnection.provider_account_id.is_(None),
+                CalendarSelection.primary.is_(True),
+                CalendarSelection.external_calendar_id == provider_account_id,
+            )
+            .with_for_update()
+        )
+    if connection is None:
         connection = CalendarConnection(
             user_id=user_id,
             provider=CalendarProviderName.google,
+            provider_account_id=provider_account_id,
+            provider_account_email=provider_account_email,
             scopes=list(tokens.scopes),
         )
         session.add(connection)
+    else:
+        connection.provider_account_id = provider_account_id
+        connection.provider_account_email = provider_account_email
     existing_refresh = connection.refresh_token_encrypted
     connection.access_token_encrypted = cipher.encrypt(tokens.access_token)
     connection.refresh_token_encrypted = (
@@ -137,6 +152,20 @@ def store_google_connection(
     session.commit()
     session.refresh(connection)
     return connection
+
+
+def list_owned_connections(
+    session: Session, user_id: uuid.UUID
+) -> list[CalendarConnection]:
+    if session.get(User, user_id) is None:
+        raise CalendarConnectionNotFoundError("User not found")
+    return list(
+        session.scalars(
+            select(CalendarConnection)
+            .where(CalendarConnection.user_id == user_id)
+            .order_by(CalendarConnection.created_at, CalendarConnection.id)
+        )
+    )
 
 
 def owned_connection(

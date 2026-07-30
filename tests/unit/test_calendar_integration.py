@@ -17,6 +17,7 @@ from app.calendar_integration.models import (
     CalendarBusyInterval,
     CalendarBusyResult,
     CalendarProviderConnection,
+    ExternalCalendar,
 )
 from app.calendar_integration.security import FernetTokenCipher
 
@@ -52,6 +53,11 @@ def test_oauth_authorization_url_is_read_only_and_safe() -> None:
         "http://127.0.0.1:8000/internal/api/calendar/google/oauth/callback"
     ]
     assert "private-secret" not in str(query)
+
+    account_query = parse_qs(
+        urlparse(oauth.authorization_url("account-state", prompt_consent=True)).query
+    )
+    assert account_query["prompt"] == ["consent select_account"]
 
 
 def test_busy_normalization_merges_overlap_touch_and_calendars() -> None:
@@ -114,7 +120,7 @@ def test_google_calendar_list_paginates_and_maps_fields() -> None:
             json={"items": [{"id": "shared", "summary": "Shared"}]},
         )
 
-    async def run() -> list:
+    async def run() -> list[ExternalCalendar]:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
             provider = GoogleCalendarProvider(client)
             return await provider.list_calendars(
@@ -131,6 +137,37 @@ def test_google_calendar_list_paginates_and_maps_fields() -> None:
     assert calendars[0].timezone == "Europe/Warsaw"
     assert requests[0].url.params["maxResults"] == "250"
     assert requests[1].url.params["pageToken"] == "next"
+
+
+def test_google_account_identity_comes_from_verified_primary_calendar() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "id": "verified-account@example.com",
+                        "summary": "Verified account",
+                        "primary": True,
+                    }
+                ]
+            },
+        )
+
+    async def run() -> tuple[str, str | None]:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            identity = await GoogleCalendarProvider(client).get_account_identity(
+                CalendarProviderConnection(
+                    connection_id="00000000-0000-0000-0000-000000000001",
+                    access_token="token",
+                )
+            )
+            return identity.provider_account_id, identity.provider_account_email
+
+    assert asyncio.run(run()) == (
+        "verified-account@example.com",
+        "verified-account@example.com",
+    )
 
 
 def test_free_busy_batches_more_than_fifty_calendars() -> None:
