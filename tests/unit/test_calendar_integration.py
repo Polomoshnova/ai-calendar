@@ -7,6 +7,10 @@ import pytest
 from cryptography.fernet import Fernet
 from pydantic import ValidationError
 
+from app.calendar_integration.errors import (
+    CalendarEventNotFoundError,
+    CalendarUnavailableError,
+)
 from app.calendar_integration.google import (
     GoogleCalendarProvider,
     GoogleOAuthClient,
@@ -17,6 +21,7 @@ from app.calendar_integration.models import (
     CalendarBusyInterval,
     CalendarBusyResult,
     CalendarEventCreateRequest,
+    CalendarEventSnapshot,
     CalendarProviderConnection,
     ExternalCalendar,
 )
@@ -253,6 +258,104 @@ def test_google_create_event_uses_exact_target_and_returns_typed_result() -> Non
         "timeZone": "Europe/Warsaw",
     }
     assert body["end"]["dateTime"] == (NOW + timedelta(hours=1)).isoformat()
+
+
+def test_google_get_event_uses_exact_identity_and_normalizes_snapshot() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "id": "event/one",
+                "status": "confirmed",
+                "etag": '"revision-2"',
+                "updated": "2026-07-30T08:05:00+00:00",
+                "start": {
+                    "dateTime": NOW.isoformat(),
+                    "timeZone": "Europe/Warsaw",
+                },
+                "end": {
+                    "dateTime": (NOW + timedelta(hours=1)).isoformat(),
+                    "timeZone": "Europe/Warsaw",
+                },
+            },
+        )
+
+    async def run() -> CalendarEventSnapshot:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await GoogleCalendarProvider(client).get_event(
+                CalendarProviderConnection(
+                    connection_id="00000000-0000-0000-0000-000000000001",
+                    access_token="token",
+                ),
+                calendar_id="team/calendar@example.com",
+                external_event_id="event/one",
+            )
+
+    result = asyncio.run(run())
+
+    assert result.start == NOW
+    assert result.end == NOW + timedelta(hours=1)
+    assert result.timezone == "Europe/Warsaw"
+    assert result.etag == '"revision-2"'
+    assert "team%2Fcalendar%40example.com/events/event%2Fone" in str(requests[0].url)
+
+
+def test_google_get_event_normalizes_cancelled_and_not_found() -> None:
+    responses = iter(
+        [
+            httpx.Response(200, json={"id": "event-1", "status": "cancelled"}),
+            httpx.Response(404, json={"error": {"message": "Event not found"}}),
+        ]
+    )
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return next(responses)
+
+    async def run() -> tuple[bool, str]:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            provider = GoogleCalendarProvider(client)
+            cancelled = await provider.get_event(
+                CalendarProviderConnection(
+                    connection_id="00000000-0000-0000-0000-000000000001",
+                    access_token="token",
+                ),
+                calendar_id="primary",
+                external_event_id="event-1",
+            )
+            with pytest.raises(CalendarEventNotFoundError) as caught:
+                await provider.get_event(
+                    CalendarProviderConnection(
+                        connection_id="00000000-0000-0000-0000-000000000001",
+                        access_token="token",
+                    ),
+                    calendar_id="primary",
+                    external_event_id="event-2",
+                )
+            return cancelled.cancelled, caught.value.code
+
+    assert asyncio.run(run()) == (True, "calendar_event_not_found")
+
+
+def test_google_get_event_distinguishes_temporary_failure() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503)
+
+    async def run() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            with pytest.raises(CalendarUnavailableError):
+                await GoogleCalendarProvider(client).get_event(
+                    CalendarProviderConnection(
+                        connection_id="00000000-0000-0000-0000-000000000001",
+                        access_token="token",
+                    ),
+                    calendar_id="primary",
+                    external_event_id="event-1",
+                )
+
+    asyncio.run(run())
 
 
 def test_busy_interval_requires_timezone_and_valid_order() -> None:

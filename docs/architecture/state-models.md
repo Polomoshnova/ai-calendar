@@ -2,7 +2,7 @@
 
 Last verified against code: 2026-07-28
 
-Latest verified Alembic revision: `20260728_07`
+Latest verified Alembic revision: `20260730_09`
 
 ## SchedulePlan lifecycle
 
@@ -19,21 +19,19 @@ stateDiagram-v2
     confirmed --> revalidation_required: conflict or partial provider failure
     revalidation_required --> confirmed: valid revalidation
     revalidation_required --> obsolete: obsolete or supersede
-    confirmed --> applying: reserved for ApplySchedulePlan
-    applying --> applied: reserved
-    applying --> partially_applied: reserved
-    applying --> failed: reserved
-    partially_applied --> applying: reserved retry
-    partially_applied --> failed: reserved
+    confirmed --> applying: ApplySchedulePlan
+    applying --> applied: all mappings persisted
+    applying --> partially_applied: partial mapping success
+    applying --> failed: no mapping success
+    partially_applied --> applying: retry
+    partially_applied --> failed: retry failed
 ```
 
-Create, confirm, obsolete, supersede, and revalidation transitions have runtime
-handlers. Applying-related transitions exist in the enum and transition table
-but have no endpoint or application service.
+All shown transitions have runtime handlers.
 
 Confirmation also changes all plan sessions from `proposed` to `confirmed`.
 Obsoletion changes them to `obsolete`. Other `ScheduledSessionStatus` values
-(`applying`, `applied`, `failed`) are reserved for apply.
+(`applying`, `applied`, `failed`) are driven by Apply.
 
 Reservation follows plan status rather than session status. Confirmed,
 revalidation-required, applying, applied, and partially-applied plans reserve
@@ -41,23 +39,19 @@ time.
 
 ## CalendarEventMapping synchronization lifecycle
 
-`SyncStatus` is implemented as a database enum, but no runtime workflow
-currently creates mappings or changes their status.
+Apply creates mappings and pull synchronization changes their status.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> pending: planned mapping creation
-    pending --> synced: planned successful apply or pull
-    pending --> failed: planned failed synchronization
-    failed --> synced: planned retry
-    synced --> failed: planned reconciliation error
-    synced --> externally_deleted: planned pull detection
-    externally_deleted --> synced: future explicit recovery only
+    [*] --> synced: successful apply
+    synced --> failed: provider pull error
+    failed --> synced: successful pull
+    synced --> externally_deleted: confirmed missing/cancelled event
+    externally_deleted --> synced: event present again
 ```
 
-Only the enum values—`pending`, `synced`, `failed`, and
-`externally_deleted`—are implemented today. Every arrow in this diagram is a
-planned runtime transition, not current behavior.
+The enum values remain `pending`, `synced`, `failed`, and
+`externally_deleted`; pull does not process the associated external change.
 
 ## Task lifecycle
 

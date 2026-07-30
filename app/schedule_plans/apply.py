@@ -6,13 +6,17 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.calendar_integration.errors import CalendarIntegrationError
-from app.calendar_integration.models import CalendarEventCreateRequest
+from app.calendar_integration.models import (
+    CalendarEventCreateRequest,
+    CalendarEventSnapshot,
+)
 from app.calendar_integration.protocols import (
     CalendarOAuthClient,
     CalendarProvider,
     TokenCipher,
 )
 from app.calendar_integration.service import connection_credentials
+from app.calendar_sync.pull import _hash, _snapshot_dict, _state
 from app.calendar_sync.snapshots import SessionWriteTargetSnapshot
 from app.models.calendar import CalendarConnection, CalendarConnectionStatus
 from app.models.calendar_sync import CalendarEventMapping, SyncStatus
@@ -225,6 +229,20 @@ async def apply_schedule_plan(
                 last_sync_attempt_at=current_time,
                 last_synced_at=current_time,
             )
+            baseline = CalendarEventSnapshot(
+                external_event_id=created.external_event_id,
+                calendar_id=created.calendar_id,
+                exists=True,
+                cancelled=False,
+                start=created.start,
+                end=created.end,
+                timezone=plan.timezone,
+                etag=created.etag,
+                provider_updated_at=created.provider_updated_at,
+                provider_status="confirmed",
+            )
+            mapping.last_synced_snapshot = _snapshot_dict(baseline)
+            mapping.last_synced_snapshot_hash = _hash(_state(baseline))
             session.add(mapping)
             scheduled_session.status = ScheduledSessionStatus.applied
             scheduled_session.failure_code = None

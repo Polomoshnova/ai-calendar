@@ -50,15 +50,15 @@ checks.
 
 Non-goals: best-effort success without an auditable result.
 
-### 4. Pull reconciliation
+### 4. Pull change detection — implemented
 
-Purpose: compare mapped events with Google, record changes, run consistency
-checking, and apply explicit local policies.
+Purpose: compare one mapped event with Google and record normalized changes.
 
-Dependencies: mappings created by apply, provider event reads, change audit
-repository, consistency and deadline policies.
+Dependencies: mappings created by apply, provider event reads, and change audit
+persistence.
 
-Non-goals: moving user-edited events back automatically.
+Non-goals: consistency checking, deadline changes, or moving user-edited events
+back automatically.
 
 ### 5. Basic product UI
 

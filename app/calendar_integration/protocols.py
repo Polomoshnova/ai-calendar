@@ -6,6 +6,7 @@ from app.calendar_integration.models import (
     CalendarBusyResult,
     CalendarEventCreateRequest,
     CalendarEventCreateResult,
+    CalendarEventSnapshot,
     CalendarProviderConnection,
     ExternalCalendar,
 )
@@ -32,6 +33,14 @@ class CalendarProvider(Protocol):
         connection: CalendarProviderConnection,
         request: CalendarEventCreateRequest,
     ) -> CalendarEventCreateResult: ...
+
+    async def get_event(
+        self,
+        connection: CalendarProviderConnection,
+        *,
+        calendar_id: str,
+        external_event_id: str,
+    ) -> CalendarEventSnapshot: ...
 
 
 class TokenCipher(Protocol):

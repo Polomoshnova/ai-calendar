@@ -4,7 +4,7 @@ Status: current architecture
 
 Last verified against code: 2026-07-28
 
-Latest verified Alembic revision: `20260730_08`
+Latest verified Alembic revision: `20260730_09`
 
 ## Scope
 
@@ -17,18 +17,18 @@ PostgreSQL stores users, tasks, preferences, calendar connections and
 selections, SchedulePlans, sessions, revalidation audits, and the calendar
 synchronization foundation.
 
-Google Calendar access is read-only at runtime. OAuth, encrypted tokens,
-calendar discovery and selection, FreeBusy, calendar-backed preview, and plan
-revalidation are implemented. The application does not create or update Google
-events, poll external changes, process webhooks, automatically extend task
+Google Calendar OAuth, encrypted tokens, calendar discovery and selection,
+FreeBusy, plan revalidation, event creation during Apply, and explicit
+single-event pull synchronization are implemented. The application does not
+update/delete Google events, poll, process webhooks, automatically extend task
 deadlines, or return deleted sessions to a backlog.
 
 The domain and persistence layers are ready for those later workflows:
 `CalendarEventMapping`, `ExternalCalendarChange`, typed calendar-context
 snapshots, deterministic context hashing, a pure consistency checker, a pure
 deadline policy, and reserved-interval queries exist and are tested. No
-application service currently orchestrates them into apply or pull
-reconciliation.
+Apply and pull services orchestrate mappings and external changes, while
+consistency checking remains a later workflow.
 
 ## Main user flow
 
@@ -43,8 +43,8 @@ Natural-language input
   → persisted SchedulePlan
   → plan confirmation
   → read-only SchedulePlan revalidation
-  ⇢ ApplySchedulePlan (planned)
-  ⇢ pull reconciliation (planned)
+  → ApplySchedulePlan
+  → pull synchronization
 ```
 
 The implemented composed internal workflow,
@@ -239,9 +239,9 @@ plan's intervals reserving. Revalidation loads the immutable plan, calls Google
 FreeBusy through the active CalendarConnection, verifies that the plan did not
 change during I/O, and persists a `SchedulePlanRevalidation`.
 
-Apply persists mappings. The remaining synchronization models and pure policies
-have no runtime caller; future pull reconciliation will persist external
-changes and consistency outcomes.
+Apply persists mappings. Pull synchronization reads one mapped event and
+persists external changes and the last-known normalized state. The pure
+consistency and deadline policies still have no runtime caller.
 
 ## Source-of-truth model
 
@@ -255,7 +255,8 @@ changes and consistency outcomes.
 ## Current limitations
 
 - There is no Google event update or deletion.
-- There is no pull reconciliation, polling loop, webhook, or push trigger.
+- Pull is limited to an explicit single-mapping endpoint; there is no polling
+  loop, batch job, webhook, or push trigger.
 - Reserved SchedulePlan intervals are merged into database-backed scheduling
   preview and revalidation.
 - The consistency checker and deadline extension policy have no runtime caller.
@@ -317,7 +318,8 @@ The persistence enums define:
   `invalid_session_order`, `latest_session_after_deadline`, and
   `externally_deleted_session`.
 
-No runtime lifecycle currently drives these values.
+Apply and pull drive mapping sync statuses and pull writes external changes.
+No runtime workflow processes those changes through ConsistencyChecker.
 
 ## API flow
 
@@ -332,6 +334,7 @@ Verified internal route groups:
 - task confirmation: `/internal/api/task-drafts/confirm`
 - composed workflow: `/internal/api/workflows/task-to-schedule-preview`
 - SchedulePlans: `/internal/api/schedule-plans/...`
+- mapped event pull: `/internal/api/calendar-event-mappings/{mapping_id}/sync`
 - user plan listing: `/internal/api/users/{user_id}/schedule-plans`
 - Google Calendar: `/internal/api/calendar/...`
 - development users: `/internal/api/dev/users`
@@ -342,8 +345,7 @@ at `/docs` and OpenAPI JSON at `/openapi.json` while the application is running.
 
 ## Near-term roadmap
 
-1. Add pull reconciliation that reads mapped events, records
-   `ExternalCalendarChange`, and invokes the pure consistency checker.
+1. Add explicit ConsistencyChecker processing for detected changes.
 2. Apply the deadline extension policy after externally moved sessions, with
    explicit audit behavior.
 3. Define backlog semantics; externally deleted sessions must not silently

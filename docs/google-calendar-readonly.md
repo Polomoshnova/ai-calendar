@@ -87,7 +87,6 @@ returned or logged.
 - On-demand FreeBusy only; intervals are not persisted.
 - No production OAuth verification work in this change.
 
-The repository contains a provider-neutral synchronization domain foundation,
-Apply populates `CalendarEventMapping`. No runtime records
-`ExternalCalendarChange`, invokes consistency checking, or applies deadline
-changes.
+Apply populates `CalendarEventMapping`, and explicit single-mapping pull
+synchronization records `ExternalCalendarChange`. No runtime invokes
+consistency checking or applies deadline changes.

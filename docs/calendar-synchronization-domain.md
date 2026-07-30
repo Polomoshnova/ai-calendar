@@ -1,10 +1,10 @@
 # Calendar synchronization domain
 
-Status: foundation implemented; runtime orchestration pending
+Status: pull detection implemented; consistency reconciliation pending
 
 Last verified against code: 2026-07-28
 
-Latest verified Alembic revision: `20260730_08`
+Latest verified Alembic revision: `20260730_09`
 
 This document describes the synchronization types and persistence introduced by
 Alembic revision `20260728_07`. For the source-of-truth decision, see
@@ -12,11 +12,9 @@ Alembic revision `20260728_07`. For the source-of-truth decision, see
 
 ## Runtime boundary
 
-The current Google Calendar adapter is read-only. No endpoint or service creates
-Google events, populates mappings from provider responses, polls changes,
-records external changes, invokes consistency checking, or applies deadline
-updates. The components below are tested building blocks for those future use
-cases.
+Apply creates Google events and mappings. The single-mapping pull endpoint reads
+the mapped event and records normalized differences. It does not poll, invoke
+consistency checking, mutate planning entities, or apply deadline updates.
 
 ## Persistence model
 
@@ -31,6 +29,7 @@ cases.
 - etag and provider update timestamp;
 - sync status;
 - last attempt, last success, safe error code, and diagnostic message;
+- nullable last-synchronized normalized snapshot and SHA-256 state hash;
 - creation and update timestamps.
 
 The database enforces one mapping per session and unique external event identity
@@ -46,9 +45,23 @@ the mapping relationship.
 - optional provider timestamp;
 - detection and processing timestamps;
 - optional `old_values`, `new_values`, and `raw_payload` JSONB.
+- a transition hash unique within one mapping.
 
-The model can represent `created`, `updated`, `moved`, and `deleted` changes.
-No detector or processor currently writes these rows.
+Pull synchronization writes `created`, `updated`, `moved`, and `deleted`
+changes. A row lock plus the unique transition hash prevents concurrent or
+repeated pulls of the same provider version from duplicating a change.
+
+`POST /internal/api/calendar-event-mappings/{mapping_id}/sync?user_id=...`
+validates ownership and the active connection, calls Google outside a long
+database transaction, then compares and persists in a short transaction.
+Confirmed not-found/cancelled events become `deleted` changes and
+`externally_deleted`; authorization and temporary failures never become
+deletions or replace the last-known snapshot. `processed_at` remains null
+because ConsistencyChecker is not invoked.
+
+Calendar placement is compared when the provider response can establish it
+reliably. The single-event Google endpoint is queried through the mapping's
+stored calendar ID and does not discover an event moved to a different calendar.
 
 ## SchedulePlan calendar context
 
@@ -138,3 +151,7 @@ The migration adds the mapping and change tables, synchronization enums, and
 nullable SchedulePlan fields. It removes the earlier external-event columns
 from `scheduled_sessions`, making `CalendarEventMapping` the only persistence
 source for external synchronization.
+
+Revision `20260730_09` adds nullable mapping baselines and transition hashes.
+Its downgrade refuses to drop those fields when synchronization data has been
+populated.

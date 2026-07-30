@@ -2,7 +2,7 @@
 
 Last verified against code: 2026-07-28
 
-Latest verified Alembic revision: `20260728_07`
+Latest verified Alembic revision: `20260730_09`
 
 ## Review result
 
@@ -20,6 +20,8 @@ The following paths were verified from router prefixes and decorators:
 - `GET /internal/api/users/{user_id}/schedule-plans`
 - `POST /internal/api/schedule-plans/{plan_id}/confirm`
 - `POST /internal/api/schedule-plans/{plan_id}/revalidate`
+- `POST /internal/api/schedule-plans/{plan_id}/apply`
+- `POST /internal/api/calendar-event-mappings/{mapping_id}/sync`
 - `GET /internal/api/schedule-plans/{plan_id}/revalidations`
 - `POST /internal/api/calendar/google/oauth/start`
 - `GET /internal/api/calendar/google/oauth/callback`
@@ -43,6 +45,8 @@ The following paths were verified from router prefixes and decorators:
 - Apply exposes a structured internal
   `POST /internal/api/schedule-plans/{plan_id}/apply` response; production
   authentication and public API exposure remain pending.
+- Pull synchronization exposes a structured single-mapping result; batch,
+  polling, and ConsistencyChecker processing remain intentionally absent.
 - Revalidation OpenAPI does not state prominently that
   `include_internal_busy=true` remains provider-only in the current service.
 - OAuth and calendar route schemas are safe, but their generated documentation

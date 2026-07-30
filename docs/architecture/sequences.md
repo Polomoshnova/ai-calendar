@@ -114,24 +114,20 @@ sequenceDiagram
 Provider calls continue after individual session failures. Existing mappings
 are skipped on retry.
 
-## Pull reconciliation — planned
+## Pull change detection
 
 ```mermaid
 sequenceDiagram
-    participant App as Pull reconciliation job
+    participant App as Pull synchronization service
     participant Google as Google Calendar read API
     database DB as PostgreSQL
-    participant Checker as ConsistencyChecker
 
-    App-->>DB: Load CalendarEventMappings
-    App-->>Google: Read mapped external events
+    App-->>DB: Validate one mapping, owner, and active connection
+    App-->>Google: Read mapped external event
     Google-->>App: Current time, calendar, etag, or deletion
-    App-->>DB: Compare mapping and record ExternalCalendarChange
-    App-->>Checker: Check all non-deleted task sessions
-    Checker-->>App: ConsistencyResult
-    App-->>DB: Update mapping/local synchronization state
-    Note over App,DB: Deadline policy may extend Task deadline after a move
+    App-->>DB: Lock mapping, compare baseline, record change, update sync metadata
+    Note over App,DB: ConsistencyChecker and deadline policy are not executed
 ```
 
-Every arrow is planned. Reconciliation must not automatically move a user's
-Google event back or return a deleted session to backlog.
+Pull detection does not move a user's Google event, mutate the ScheduledSession,
+extend a deadline, or return a deleted session to backlog.

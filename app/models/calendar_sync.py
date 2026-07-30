@@ -98,6 +98,12 @@ class CalendarEventMapping(Base):
     )
     sync_error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
     sync_error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_synced_snapshot: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
+    )
+    last_synced_snapshot_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -122,6 +128,13 @@ class CalendarEventMapping(Base):
 
 class ExternalCalendarChange(Base):
     __tablename__ = "external_calendar_changes"
+    __table_args__ = (
+        UniqueConstraint(
+            "mapping_id",
+            "transition_hash",
+            name="uq_external_calendar_changes_mapping_transition",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -146,6 +159,7 @@ class ExternalCalendarChange(Base):
     old_values: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     new_values: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     raw_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    transition_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     processed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
