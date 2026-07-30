@@ -839,8 +839,12 @@ def test_no_direct_calendar_event_endpoint(client: TestClient) -> None:
         "https://www.googleapis.com/auth/calendar.events",
     }
     paths = client.get("/openapi.json").json()["paths"]
-    assert not any(
-        "event" in path.lower()
-        and any(method in paths[path] for method in ("post", "put", "patch", "delete"))
+    event_mutation_paths = {
+        path
         for path in paths
-    )
+        if "event" in path.lower()
+        and any(method in paths[path] for method in ("post", "put", "patch", "delete"))
+    }
+    assert event_mutation_paths == {
+        "/internal/api/calendar-event-mappings/{mapping_id}/sync"
+    }

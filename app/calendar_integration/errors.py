@@ -37,6 +37,14 @@ class CalendarProviderError(CalendarIntegrationError):
     code = "calendar_provider_error"
 
 
+class CalendarEventNotFoundError(CalendarProviderError):
+    code = "calendar_event_not_found"
+
+
+class CalendarNotFoundError(CalendarProviderError):
+    code = "calendar_not_found"
+
+
 class CalendarUnavailableError(CalendarProviderError):
     code = "calendar_provider_unavailable"
 

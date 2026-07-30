@@ -22,6 +22,8 @@ natural-language input
   → persisted SchedulePlan
   → confirmation
   → read-only revalidation
+  → explicit apply
+  → pull synchronization
 ```
 
 AI interpretation and scheduling are deliberately separate. The model converts
@@ -31,12 +33,10 @@ pure, deterministic components, so the same confirmed inputs produce
 inspectable reason codes, scores, warnings, and unscheduled outcomes without an
 AI provider making planning decisions.
 
-The current Google Calendar runtime integration is read-only. It supports OAuth,
-encrypted credentials, calendar listing and selection, FreeBusy queries,
-calendar-backed preview, and fresh SchedulePlan revalidation. It requests only
-the `calendar.readonly` scope and does not create, update, delete, poll, or watch
-Google events. Persistence and pure policies needed for later apply and
-pull-reconciliation workflows exist, but no runtime workflow uses them yet.
+The Google Calendar runtime supports OAuth, encrypted credentials, calendar
+listing and selection, FreeBusy, explicit event creation during Apply, and
+single-mapping pull synchronization. It requests `calendar.readonly` and
+`calendar.events`; it does not update/delete events, poll, or watch calendars.
 
 ## Current capabilities
 
@@ -58,8 +58,9 @@ pull-reconciliation workflows exist, but no runtime workflow uses them yet.
 - [x] Calendar listing, selection, FreeBusy, and calendar-backed preview
 - [x] Calendar synchronization domain and persistence foundation
 - [x] Explicit SchedulePlan apply with per-session Google event mappings
+- [x] Pull synchronization for one mapped Google event
 
-### Foundation implemented, synchronization runtime pending
+### Synchronization foundation and pull detection
 
 - [x] One `CalendarEventMapping` per `ScheduledSession`, with provider event
   identity, etag, provider timestamps, sync status, and diagnostics
@@ -72,16 +73,16 @@ pull-reconciliation workflows exist, but no runtime workflow uses them yet.
 - [x] Multi-connection/account write-target representation in snapshots
 - [x] Half-open reserved-interval repository query with `exclude_plan_id`
 
-These components support Apply and future synchronization services. Pull
-reconciliation remains unimplemented. A user may connect multiple Google
-accounts; each external account is unique per user.
+Pull synchronization records meaningful provider changes without invoking the
+consistency policies. A user may connect multiple Google accounts; each
+external account is unique per user.
 
 ### Planned
 
 - [x] `ApplySchedulePlan`
 - [x] Google Calendar event creation during explicit apply
-- [ ] Pull reconciliation of applied sessions
-- [ ] Handling externally moved, resized, and deleted Google events
+- [x] Pull detection of moved, resized, cancelled, and missing Google events
+- [ ] Consistency checking and reconciliation of detected changes
 - [ ] Explicit backlog behavior
 - [ ] Basic authenticated product UI
 - [ ] Optional push-assisted synchronization after pull reconciliation is
@@ -95,12 +96,11 @@ accounts; each external account is unique per user.
   `SchedulePlan`.
 - Confirming a plan reserves its half-open session intervals `[start, end)`;
   confirmation does not create Google events.
-- Google Calendar is read-only at the current runtime integration stage.
-- After a future apply operation, Google Calendar will be the source of truth
+- After Apply, Google Calendar is the source of truth
   for actual event time, calendar placement, and event existence.
 - The application remains the source of truth for Task metadata and planning
   history.
-- `ScheduledSession` is the future synchronization unit; external identity and
+- `ScheduledSession` is the synchronization unit; external identity and
   sync state live in `CalendarEventMapping`, not on the session.
 - Synchronization is pull-first. Push notifications may later reduce latency,
   but are not the reconciliation authority.

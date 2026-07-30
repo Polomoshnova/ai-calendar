@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.api.v1.router import router as api_v1_router
 from app.internal.ai_intake_router import router as ai_intake_router
 from app.internal.calendar_router import router as calendar_router
+from app.internal.calendar_sync_router import router as calendar_sync_router
 from app.internal.dev_users_router import router as dev_users_router
 from app.internal.router import router as internal_router
 from app.internal.schedule_plans_router import router as schedule_plans_router
@@ -21,6 +22,7 @@ app.include_router(ai_intake_router)
 app.include_router(task_confirmation_router)
 app.include_router(workflow_router)
 app.include_router(calendar_router)
+app.include_router(calendar_sync_router)
 app.include_router(dev_users_router)
 app.include_router(schedule_plans_router)
 
