@@ -60,7 +60,26 @@ persistence.
 Non-goals: consistency checking, deadline changes, or moving user-edited events
 back automatically.
 
-### 5. Basic product UI
+### 5. External Calendar Policy Engine — implemented
+
+Purpose: deterministically translate normalized external state into immutable
+actions and conflict descriptions.
+
+Dependencies: normalized aggregate and external change values only.
+
+Non-goals: persistence, orchestration, provider calls, or ORM mutation.
+
+### 6. External change processing — planned
+
+Purpose: explicitly load an aggregate, evaluate policy, and persist authorized
+decisions.
+
+Dependencies: pull detection and the pure Policy Engine.
+
+Non-goals: hidden rescheduling, automatic backlog placement, or provider-event
+recreation.
+
+### 7. Basic product UI
 
 Purpose: expose intake, confirmation, preview, plan review, apply, and conflict
 states through an authenticated product surface.
