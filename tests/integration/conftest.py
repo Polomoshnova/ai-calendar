@@ -16,10 +16,12 @@ from app.models import (
     CalendarOAuthState,
     CalendarSelection,
     ExternalCalendarChange,
+    ExternalCalendarConsistencyFinding,
     ScheduledSession,
     SchedulePlan,
     SchedulePlanRevalidation,
     Task,
+    TaskDeadlineHistory,
     User,
     UserPreferences,
 )
@@ -55,6 +57,8 @@ TestSessionLocal = sessionmaker(bind=test_engine, expire_on_commit=False)
 @pytest.fixture
 def db_session() -> Generator[Session, None, None]:
     with TestSessionLocal() as session:
+        session.execute(delete(ExternalCalendarConsistencyFinding))
+        session.execute(delete(TaskDeadlineHistory))
         session.execute(delete(ExternalCalendarChange))
         session.execute(delete(CalendarEventMapping))
         session.execute(delete(CalendarSelection))
@@ -69,6 +73,8 @@ def db_session() -> Generator[Session, None, None]:
         session.commit()
         yield session
         session.rollback()
+        session.execute(delete(ExternalCalendarConsistencyFinding))
+        session.execute(delete(TaskDeadlineHistory))
         session.execute(delete(ExternalCalendarChange))
         session.execute(delete(CalendarEventMapping))
         session.execute(delete(CalendarSelection))

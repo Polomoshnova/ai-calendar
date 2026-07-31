@@ -435,6 +435,8 @@ def test_preview_creates_no_database_rows(
         "calendar_selections",
         "calendar_event_mappings",
         "external_calendar_changes",
+        "external_calendar_consistency_findings",
+        "task_deadline_history",
         "schedule_plans",
         "schedule_plan_revalidations",
         "scheduled_sessions",

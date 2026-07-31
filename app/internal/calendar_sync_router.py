@@ -4,6 +4,11 @@ from fastapi import APIRouter, HTTPException
 
 from app.api.dependencies import DatabaseSession
 from app.calendar_integration.errors import CalendarIntegrationError
+from app.calendar_sync.processing import (
+    ExternalCalendarProcessingError,
+    ProcessExternalCalendarChangeService,
+)
+from app.calendar_sync.processing_schemas import ProcessExternalCalendarChangeResult
 from app.calendar_sync.pull import (
     CalendarEventMappingNotFoundError,
     pull_calendar_event,
@@ -13,6 +18,26 @@ from app.internal.calendar_router import CalendarRuntimeDependency
 from app.internal.dependencies import InternalToolsEnabled
 
 router = APIRouter(prefix="/internal/api", tags=["internal-calendar-sync"])
+
+
+@router.post(
+    "/external-calendar-changes/{change_id}/process",
+    response_model=ProcessExternalCalendarChangeResult,
+)
+def process_external_calendar_change(
+    change_id: uuid.UUID,
+    user_id: uuid.UUID,
+    session: DatabaseSession,
+    _enabled: InternalToolsEnabled,
+) -> ProcessExternalCalendarChangeResult:
+    try:
+        return ProcessExternalCalendarChangeService(session).process(
+            user_id=user_id, change_id=change_id
+        )
+    except ExternalCalendarProcessingError as exc:
+        raise HTTPException(
+            status_code=exc.status_code, detail=exc.to_detail()
+        ) from exc
 
 
 @router.post(

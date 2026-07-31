@@ -1,10 +1,10 @@
 # Calendar synchronization domain
 
-Status: pull detection implemented; consistency reconciliation pending
+Status: pull detection and explicit change processing implemented
 
 Last verified against code: 2026-07-28
 
-Latest verified Alembic revision: `20260730_09`
+Latest verified Alembic revision: `20260731_10`
 
 This document describes the synchronization types and persistence introduced by
 Alembic revision `20260728_07`. For the source-of-truth decision, see
@@ -46,6 +46,7 @@ the mapping relationship.
 - detection and processing timestamps;
 - optional `old_values`, `new_values`, and `raw_payload` JSONB.
 - a transition hash unique within one mapping.
+- processing status and a safe deterministic processing result.
 
 Pull synchronization writes `created`, `updated`, `moved`, and `deleted`
 changes. A row lock plus the unique transition hash prevents concurrent or
@@ -56,8 +57,15 @@ validates ownership and the active connection, calls Google outside a long
 database transaction, then compares and persists in a short transaction.
 Confirmed not-found/cancelled events become `deleted` changes and
 `externally_deleted`; authorization and temporary failures never become
-deletions or replace the last-known snapshot. `processed_at` remains null
-because ConsistencyChecker is not invoked.
+deletions or replace the last-known snapshot. Pull leaves new changes `pending`
+and never invokes the Policy Engine.
+
+`POST /internal/api/external-calendar-changes/{change_id}/process?user_id=...`
+locks one change and atomically applies the pure Policy Engine decisions. It may
+update the mapped session, extend the Task deadline with one audit row, mark the
+mapping externally missing, or persist typed consistency findings. Repeated
+processing returns the stored result. It preserves SchedulePlan snapshots and
+status and never calls Google or the scheduler.
 
 Calendar placement is compared when the provider response can establish it
 reliably. The single-event Google endpoint is queried through the mapping's
@@ -155,3 +163,8 @@ source for external synchronization.
 Revision `20260730_09` adds nullable mapping baselines and transition hashes.
 Its downgrade refuses to drop those fields when synchronization data has been
 populated.
+
+Revision `20260731_10` adds the processing lifecycle/result, deadline history,
+and external-calendar consistency findings. Unique constraints prevent a
+change from duplicating deadline audit or typed finding identity. Downgrade is
+refused once processing data exists.
