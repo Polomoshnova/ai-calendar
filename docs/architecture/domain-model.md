@@ -1,8 +1,8 @@
 # Domain model
 
-Last verified against code: 2026-07-28
+Last verified against code: 2026-08-02
 
-Latest verified Alembic revision: `20260730_08`
+Latest verified Alembic revision: `20260731_10`
 
 ## Overview
 
@@ -19,11 +19,17 @@ erDiagram
     USER ||--o{ SCHEDULE_PLAN : owns
     TASK o|--o{ SCHEDULE_PLAN : versions
     SCHEDULE_PLAN ||--|{ SCHEDULED_SESSION : contains
+    TASK o|--o{ SCHEDULED_SESSION : schedules
     SCHEDULE_PLAN ||--o{ SCHEDULE_PLAN_REVALIDATION : audits
     CALENDAR_CONNECTION o|--o{ SCHEDULE_PLAN_REVALIDATION : checks_with
     SCHEDULED_SESSION ||--o| CALENDAR_EVENT_MAPPING : maps_to
     CALENDAR_CONNECTION ||--o{ CALENDAR_EVENT_MAPPING : owns
     CALENDAR_EVENT_MAPPING ||--o{ EXTERNAL_CALENDAR_CHANGE : records
+    TASK ||--o{ TASK_DEADLINE_HISTORY : audits
+    EXTERNAL_CALENDAR_CHANGE ||--o| TASK_DEADLINE_HISTORY : causes
+    EXTERNAL_CALENDAR_CHANGE ||--o{ EXTERNAL_CALENDAR_CONSISTENCY_FINDING : reports
+    SCHEDULE_PLAN ||--o{ EXTERNAL_CALENDAR_CONSISTENCY_FINDING : scopes
+    SCHEDULED_SESSION o|--o{ EXTERNAL_CALENDAR_CONSISTENCY_FINDING : concerns
 ```
 
 `TaskDraftV2` and `ConfirmedTask` are intentionally absent from the ER diagram
@@ -43,8 +49,9 @@ record a conflict, or flag an unsupported change. The engine identifies
 outside-window, overlap, and missing-event conflicts but does not reconcile or
 persist them.
 
-Status: domain evaluation is implemented. No application service invokes or
-processes its decisions yet. See
+Status: domain evaluation and application orchestration are implemented. The
+processing service invokes the engine once and applies validated decisions
+atomically. See
 [External Calendar Policy Engine](../external-calendar-policy-engine.md).
 
 ## Entities and contracts
@@ -128,12 +135,12 @@ Key invariants: positive version, valid planning window, unique group/version,
 unique task/version, unique idempotency key, and at least one validated session
 when created by the service.
 
-Status: persistence, confirmation, obsoletion, listing, and revalidation are
-implemented. Apply-related states are reserved for a future workflow.
+Status: persistence, confirmation, obsoletion, listing, revalidation, and Apply
+are implemented.
 
 ### ScheduledSession
 
-Purpose: represents one exact block within a SchedulePlan and is the future
+Purpose: represents one exact block within a SchedulePlan and is the
 synchronization unit.
 
 Ownership and mutability: owned by its plan. Scheduling content becomes
@@ -151,7 +158,7 @@ etag, or sync status. Compatibility properties read external identity through
 its mapping. `CalendarEventMapping` is the sole persistence source for external
 event identity and synchronization state.
 
-Status: implemented as a plan component; external synchronization is pending.
+Status: implemented as a plan component and synchronization unit.
 
 ### CalendarConnection
 
@@ -160,13 +167,14 @@ Purpose: stores one user's provider connection and encrypted credentials.
 Ownership and mutability: user-owned and mutable as OAuth tokens refresh,
 connections expire, or the user disconnects.
 
-Relations: belongs to User and owns selections and future event mappings.
+Relations: belongs to User and owns selections and event mappings.
 
-Key invariants: unique `(user_id, provider)`; provider is currently `google`;
-status is `active`, `expired`, `revoked`, or `error`; tokens are encrypted and
-never returned by API schemas.
+Key invariants: unique `(user_id, provider, provider_account_id)`; provider is
+currently `google`; status is `active`, `expired`, `revoked`, or `error`;
+tokens are encrypted and never returned by API schemas.
 
-Status: implemented for read-only Google access.
+Status: implemented for Google read access and explicit event creation during
+Apply.
 
 ### CalendarSelection
 
@@ -189,7 +197,7 @@ Purpose: links one ScheduledSession to one external provider event and stores
 etag, provider update time, sync status, and safe diagnostics.
 
 Ownership and mutability: application persistence mirrors provider identity and
-sync observations. It is mutable by future apply and reconciliation workflows.
+sync observations. Apply creates it and pull synchronization updates it.
 
 Relations: belongs to ScheduledSession and CalendarConnection; owns external
 change audit rows.
@@ -197,11 +205,10 @@ change audit rows.
 Key invariants: one mapping per ScheduledSession and unique external identity
 within `(calendar_connection_id, calendar_id, external_event_id)`.
 
-One Task may eventually have sessions mapped to different accounts and
-calendars because targets are per session. Multiple Google accounts can be
-connected, but multi-account Google writing is not yet operational.
+One Task may have sessions mapped to different Google accounts and calendars
+because write targets and mappings are per session.
 
-Status: model and migration implemented; no runtime creator or reconciler.
+Status: created by ApplySchedulePlan and read by pull synchronization.
 
 ### ExternalCalendarChange
 
@@ -216,7 +223,33 @@ Relations: belongs to CalendarEventMapping.
 Key invariants: mapping reference and change type are required; deletion of the
 mapping cascades to its changes.
 
-Status: model and migration implemented; no detector or processor.
+Pull synchronization detects and persists these rows. The External Calendar
+Policy Engine returns typed decisions; `ProcessExternalCalendarChangeService`
+validates and applies them atomically with the final processing status.
+
+Status: detection and processing are implemented through explicit internal
+endpoints.
+
+### TaskDeadlineHistory
+
+Purpose: audits deadline extensions caused by processed external calendar
+changes.
+
+Relations: belongs to one Task and one `ExternalCalendarChange`. At most one
+history row may be written for a change.
+
+Status: implemented. Deadline processing extends only and never shortens.
+
+### ExternalCalendarConsistencyFinding
+
+Purpose: persists structured conflict findings returned by the Policy Engine
+without resolving them.
+
+Relations: belongs to one `ExternalCalendarChange` and `SchedulePlan`, and may
+reference one `ScheduledSession`.
+
+Status: implemented. A deleted Google event preserves the mapping, session,
+Task status, and plan; it does not automatically move a Task to backlog.
 
 ### SchedulePlanRevalidation
 
