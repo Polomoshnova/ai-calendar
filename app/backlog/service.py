@@ -9,6 +9,7 @@ from app.backlog.domain import (
     BacklogOrigin,
     BacklogReason,
     BacklogStatus,
+    InvalidBacklogTransitionError,
     validate_backlog_values,
     validate_transition,
 )
@@ -139,19 +140,27 @@ def defer_backlog_entry(
     user_id: uuid.UUID,
     deferred_until: datetime | None = None,
     next_review_at: datetime | None = None,
+    note: str | None = None,
 ) -> BacklogEntry:
     entry, task = _locked_entry_and_task(session, entry_id, user_id)
     if entry.status is BacklogStatus.deferred:
-        if (
+        same_dates = (
             entry.deferred_until == deferred_until
             and entry.next_review_at == next_review_at
-        ):
+        )
+        if same_dates and (note is None or entry.note == note):
+            return _commit_entry(session, entry)
+        if same_dates and note is not None:
+            entry.note = note
+            _validate(entry, task)
             return _commit_entry(session, entry)
         raise BacklogDomainError("deferred dates require an explicit update operation")
     validate_transition(entry.status, BacklogStatus.deferred)
     entry.status = BacklogStatus.deferred
     entry.deferred_until = deferred_until
     entry.next_review_at = next_review_at
+    if note is not None:
+        entry.note = note
     _validate(entry, task)
     return _commit_entry(session, entry)
 
@@ -160,8 +169,10 @@ def reactivate_backlog_entry(
     session: Session, *, entry_id: uuid.UUID, user_id: uuid.UUID
 ) -> BacklogEntry:
     entry, task = _locked_entry_and_task(session, entry_id, user_id)
-    if entry.status is BacklogStatus.active:
-        return _commit_entry(session, entry)
+    if entry.status is not BacklogStatus.deferred:
+        raise InvalidBacklogTransitionError(
+            f"cannot transition backlog entry from {entry.status.value} to active"
+        )
     validate_transition(entry.status, BacklogStatus.active)
     entry.status = BacklogStatus.active
     entry.deferred_until = None
@@ -190,6 +201,7 @@ def resolve_backlog_entry(
     entry_id: uuid.UUID,
     user_id: uuid.UUID,
     resolved_at: datetime | None = None,
+    note: str | None = None,
 ) -> BacklogEntry:
     entry, task = _locked_entry_and_task(session, entry_id, user_id)
     if entry.status is BacklogStatus.resolved:
@@ -198,12 +210,18 @@ def resolve_backlog_entry(
     entry.status = BacklogStatus.resolved
     entry.remaining_duration_minutes = 0
     entry.resolved_at = resolved_at or _utc_now()
+    if note is not None:
+        entry.note = note
     _validate(entry, task)
     return _commit_entry(session, entry)
 
 
 def cancel_backlog_entry(
-    session: Session, *, entry_id: uuid.UUID, user_id: uuid.UUID
+    session: Session,
+    *,
+    entry_id: uuid.UUID,
+    user_id: uuid.UUID,
+    note: str | None = None,
 ) -> BacklogEntry:
     entry, task = _locked_entry_and_task(session, entry_id, user_id)
     if entry.status is BacklogStatus.cancelled:
@@ -212,5 +230,7 @@ def cancel_backlog_entry(
     entry.status = BacklogStatus.cancelled
     entry.remaining_duration_minutes = 0
     entry.resolved_at = None
+    if note is not None:
+        entry.note = note
     _validate(entry, task)
     return _commit_entry(session, entry)

@@ -1,8 +1,8 @@
 # OpenAPI documentation gaps
 
-Last verified against code: 2026-07-28
+Last verified against code: 2026-08-02
 
-Latest verified Alembic revision: `20260731_10`
+Latest verified Alembic revision: `20260802_11`
 
 ## Review result
 
@@ -32,11 +32,19 @@ The following paths were verified from router prefixes and decorators:
 - `PUT /internal/api/calendar/connections/{connection_id}/selections`
 - `POST /internal/api/calendar/connections/{connection_id}/free-busy`
 - `POST /internal/api/dev/users`
+- `GET|POST /internal/api/backlog`
+- `GET /internal/api/backlog/{entry_id}`
+- `POST /internal/api/backlog/{entry_id}/defer`
+- `POST /internal/api/backlog/{entry_id}/reactivate`
+- `POST /internal/api/backlog/{entry_id}/resolve`
+- `POST /internal/api/backlog/{entry_id}/cancel`
 
 ## Gaps
 
 - Several routes rely on function-name-generated summaries and have no explicit
   operation description or examples.
+- Backlog routes have explicit summaries, typed request and response models,
+  boundary descriptions, and creation/defer request examples.
 - AI analysis and task confirmation routers set `include_in_schema=False`, so
   those implemented internal endpoints do not appear in generated OpenAPI.
 - The scheduling lab router is intentionally excluded from OpenAPI.
