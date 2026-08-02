@@ -2,9 +2,9 @@
 
 Status: current architecture
 
-Last verified against code: 2026-07-28
+Last verified against code: 2026-08-02
 
-Latest verified Alembic revision: `20260730_09`
+Latest verified Alembic revision: `20260731_10`
 
 ## Scope
 
@@ -15,20 +15,14 @@ routes for AI intake, task confirmation, composed workflows, Google Calendar,
 SchedulePlans, revalidation, development users, and the scheduling lab.
 PostgreSQL stores users, tasks, preferences, calendar connections and
 selections, SchedulePlans, sessions, revalidation audits, and the calendar
-synchronization foundation.
+synchronization lifecycle.
 
 Google Calendar OAuth, encrypted tokens, calendar discovery and selection,
-FreeBusy, plan revalidation, event creation during Apply, and explicit
-single-event pull synchronization are implemented. The application does not
-update/delete Google events, poll, process webhooks, automatically extend task
-deadlines, or return deleted sessions to a backlog.
-
-The domain and persistence layers are ready for those later workflows:
-`CalendarEventMapping`, `ExternalCalendarChange`, typed calendar-context
-snapshots, deterministic context hashing, a pure consistency checker, a pure
-deadline policy, and reserved-interval queries exist and are tested. No
-Apply and pull services orchestrate mappings and external changes, while
-consistency checking remains a later workflow.
+FreeBusy, plan revalidation, event creation during Apply, explicit single-event
+pull synchronization, the pure External Calendar Policy Engine, and atomic
+external-change processing are implemented. The application does not
+update/delete Google events, poll, process webhooks, automatically reschedule,
+or return deleted sessions to a backlog.
 
 ## Main user flow
 
@@ -44,7 +38,11 @@ Natural-language input
   → plan confirmation
   → read-only SchedulePlan revalidation
   → ApplySchedulePlan
+  → Google Calendar
   → pull synchronization
+  → ExternalCalendarChange
+  → External Calendar Policy Engine
+  → Process External Calendar Change
 ```
 
 The implemented composed internal workflow,
@@ -117,16 +115,16 @@ snapshots of the confirmed task, preferences, busy context, and preview
 diagnostics.
 
 The implemented plan operations are create-from-preview, read, list, confirm,
-obsolete, revalidate, and revalidation-history. Applying-related status values
-exist to define the lifecycle but have no runtime transition endpoint or
-service.
+obsolete, revalidate, revalidation-history, and ApplySchedulePlan. Apply creates
+Google events and persists one `CalendarEventMapping` for each successful
+session write.
 
 ### Calendar integration
 
 `app/calendar_integration/` defines provider-neutral contracts, safe API
 models, OAuth and token handling, calendar selection, normalized busy results,
-and Google adapters. The only configured scope is
-`https://www.googleapis.com/auth/calendar.readonly`.
+and Google adapters. Configured scopes support read access plus explicit event
+creation during Apply. No runtime updates or deletes Google events.
 
 `CalendarConnection` stores encrypted access and refresh tokens and connection
 health. `CalendarOAuthState` is hashed, expiring, user-bound, and single-use.
@@ -137,8 +135,8 @@ availability. FreeBusy intervals and event contents are not persisted.
 
 SQLAlchemy models use UUID primary keys, timezone-aware timestamps, PostgreSQL
 enums, relational constraints, and JSONB snapshots. Alembic owns schema
-evolution. The current head is revision `20260730_08` in
-`20260730_08_multi_account_google_connections.py`.
+evolution. The current head is revision `20260731_10` in
+`20260731_10_process_external_calendar_changes.py`.
 
 Repository functions in `app/schedule_plans/repository.py` load plans and query
 reserved intervals. Reserving states are `confirmed`,
@@ -172,9 +170,11 @@ pure policies without provider calls:
 - `deadline_after_external_move()` returns the maximum of the current deadline
   and all non-deleted session ends.
 
-These are foundations only. Nothing currently creates mapping rows from Google
-events, records detected external changes, invokes the consistency checker from
-an endpoint, or applies the deadline result to a Task.
+Apply creates mapping rows. Pull synchronization detects normalized changes and
+persists `ExternalCalendarChange`. The processing service locks one change,
+constructs the aggregate, invokes `evaluate_external_calendar_policy()` once,
+validates its decisions, and atomically updates the mapped session, Task
+deadline history, consistency findings, and processing status as authorized.
 
 ## Container diagram
 
@@ -191,11 +191,14 @@ flowchart LR
     Plan[SchedulePlan domain]
     Revalidation[Revalidation service]
     CalendarRead[Google Calendar read integration]
-    SyncDomain[Calendar synchronization domain foundation]
+    PullSync[Pull synchronization]
+    Change[ExternalCalendarChange]
+    Policy[External Calendar Policy Engine]
+    Process[Process External Calendar Change]
     DB[(PostgreSQL)]
     Google[Google Calendar]
     Apply[ApplySchedulePlan]
-    PullSync[Pull reconciliation - planned]
+    Future[Polling / webhook triggers - planned]
 
     User --> UI
     UI --> API
@@ -210,12 +213,17 @@ flowchart LR
     API --> DB
     Plan --> DB
     CalendarRead --> DB
-    SyncDomain --> DB
-
-    Plan -. planned .-> Apply
-    Apply -. planned .-> Google
-    Google -. planned .-> PullSync
-    PullSync -. planned .-> SyncDomain
+    Plan --> Apply
+    Apply --> Google
+    Apply --> DB
+    API --> PullSync
+    PullSync --> Google
+    PullSync --> Change
+    Change --> DB
+    API --> Process
+    Process --> Policy
+    Process --> DB
+    Future -. planned trigger .-> PullSync
 ```
 
 ## Main data flow
@@ -240,8 +248,9 @@ FreeBusy through the active CalendarConnection, verifies that the plan did not
 change during I/O, and persists a `SchedulePlanRevalidation`.
 
 Apply persists mappings. Pull synchronization reads one mapped event and
-persists external changes and the last-known normalized state. The pure
-consistency and deadline policies still have no runtime caller.
+persists external changes and the last-known normalized state. Explicit change
+processing invokes the pure policy boundary and applies validated decisions in
+one transaction.
 
 ## Source-of-truth model
 
@@ -249,8 +258,8 @@ consistency and deadline policies still have no runtime caller.
 |---|---|---|
 | Before confirmation | `TaskDraftV2` plus the user's pending `DraftReview` | AI output is a proposal and is not durable task intent. |
 | After `ConfirmedTask` | The clean confirmed application value | It contains reviewed task meaning without AI confidence metadata. The composed workflow remains stateless. |
-| After SchedulePlan confirmation | The application database | `SchedulePlan` and immutable `ScheduledSession` blocks are the approved proposal and reserve time. No Google event exists yet. |
-| After successful Google event creation | Google for actual event time, calendar placement, and existence; the application for Task metadata and planning history | Apply activates this boundary for each successfully mapped session. |
+| Before Apply | The application database | `SchedulePlan` and `ScheduledSession` own approved timing and reserve half-open intervals. |
+| After Apply | Google for event existence, actual time, and calendar placement; the application for Task metadata, deadline policy, planning history, and audit records | `CalendarEventMapping` connects each applied session to its external identity. |
 
 ## Current limitations
 
@@ -259,7 +268,6 @@ consistency and deadline policies still have no runtime caller.
   loop, batch job, webhook, or push trigger.
 - Reserved SchedulePlan intervals are merged into database-backed scheduling
   preview and revalidation.
-- The consistency checker and deadline extension policy have no runtime caller.
 - There is no automatic rescheduling after external changes.
 - There is no backlog domain.
 - There is no authenticated product UI; the scheduling lab is internal only.
@@ -318,8 +326,9 @@ The persistence enums define:
   `invalid_session_order`, `latest_session_after_deadline`, and
   `externally_deleted_session`.
 
-Apply and pull drive mapping sync statuses and pull writes external changes.
-No runtime workflow processes those changes through ConsistencyChecker.
+Apply and pull drive mapping sync statuses, and pull writes external changes.
+The explicit processing workflow invokes the External Calendar Policy Engine;
+it records conflicts but does not resolve or automatically reschedule them.
 
 ## API flow
 
@@ -335,6 +344,8 @@ Verified internal route groups:
 - composed workflow: `/internal/api/workflows/task-to-schedule-preview`
 - SchedulePlans: `/internal/api/schedule-plans/...`
 - mapped event pull: `/internal/api/calendar-event-mappings/{mapping_id}/sync`
+- external change processing:
+  `/internal/api/external-calendar-changes/{change_id}/process`
 - user plan listing: `/internal/api/users/{user_id}/schedule-plans`
 - Google Calendar: `/internal/api/calendar/...`
 - development users: `/internal/api/dev/users`
@@ -345,13 +356,11 @@ at `/docs` and OpenAPI JSON at `/openapi.json` while the application is running.
 
 ## Near-term roadmap
 
-1. Add explicit ConsistencyChecker processing for detected changes.
-2. Apply the deadline extension policy after externally moved sessions, with
-   explicit audit behavior.
-3. Define backlog semantics; externally deleted sessions must not silently
+1. Define backlog semantics; externally deleted sessions must not silently
    reappear.
-6. Add authenticated product APIs and a basic product UI.
-7. Consider push notifications only as an optional trigger after pull
+2. Add manual retry and replanning actions plus planner-oriented read models.
+3. Add authenticated product APIs and a basic product UI.
+4. Consider push notifications only as an optional trigger after pull
    reconciliation is reliable.
 
 Outlook, Apple Calendar, and webhooks are not committed MVP scope in the

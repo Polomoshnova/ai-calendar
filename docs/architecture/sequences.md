@@ -1,8 +1,8 @@
 # Sequence diagrams
 
-Last verified against code: 2026-07-28
+Last verified against code: 2026-08-02
 
-Latest verified Alembic revision: `20260728_07`
+Latest verified Alembic revision: `20260731_10`
 
 ## Task intake and scheduling preview
 
@@ -93,41 +93,85 @@ sequenceDiagram
 
 ## ApplySchedulePlan
 
+This is a synchronous, explicit internal flow through
+`POST /internal/api/schedule-plans/{plan_id}/apply`.
+
 ```mermaid
 sequenceDiagram
     actor Client
+    participant API as Apply endpoint
     participant Apply as ApplySchedulePlan
     participant Google as Google Calendar write API
     participant DB as PostgreSQL
 
-    Client-->>Apply: Apply confirmed plan
-    Apply-->>DB: Validate stored targets and claim applying
+    Client->>API: POST /internal/api/schedule-plans/{plan_id}/apply
+    API->>Apply: Apply confirmed plan
+    Apply->>DB: Validate plan, revalidation, targets; claim applying
     loop Each ScheduledSession
-        Apply-->>Google: Create idempotent event
-        Google-->>Apply: Event ID, calendar ID, etag, updated time
-        Apply-->>DB: Insert CalendarEventMapping and commit
+        Apply->>Google: Create idempotent event
+        Google-->>Apply: Normalized event identity and metadata
+        Apply->>DB: Persist CalendarEventMapping and session result
     end
-    Apply-->>DB: Mark plan applied, partially_applied, or failed
-    Apply-->>Client: Apply result
+    Apply->>DB: Finalize applied, partially_applied, or failed
+    Apply-->>API: Apply result
+    API-->>Client: Apply result
 ```
 
 Provider calls continue after individual session failures. Existing mappings
 are skipped on retry.
 
-## Pull change detection
+## Pull synchronization
+
+This is a synchronous, explicit internal flow through
+`POST /internal/api/calendar-event-mappings/{mapping_id}/sync`.
 
 ```mermaid
 sequenceDiagram
+    actor Client
+    participant API as Mapping sync endpoint
     participant App as Pull synchronization service
     participant Google as Google Calendar read API
     database DB as PostgreSQL
 
-    App-->>DB: Validate one mapping, owner, and active connection
-    App-->>Google: Read mapped external event
+    Client->>API: POST /internal/api/calendar-event-mappings/{mapping_id}/sync
+    API->>App: Mapping ID and user ID
+    App->>DB: Validate mapping, ownership, and active connection
+    App->>Google: Get mapped event
     Google-->>App: Current time, calendar, etag, or deletion
-    App-->>DB: Lock mapping, compare baseline, record change, update sync metadata
-    Note over App,DB: ConsistencyChecker and deadline policy are not executed
+    App->>App: Normalize and compare snapshots
+    App->>DB: Lock mapping, persist ExternalCalendarChange and sync metadata
+    App-->>API: Pull synchronization result
+    API-->>Client: Pull synchronization result
 ```
 
 Pull detection does not move a user's Google event, mutate the ScheduledSession,
 extend a deadline, or return a deleted session to backlog.
+
+## External change processing
+
+This is a synchronous, explicit internal flow through
+`POST /internal/api/external-calendar-changes/{change_id}/process`.
+
+```mermaid
+sequenceDiagram
+    actor Client
+    participant API as Process endpoint
+    participant Process as ProcessExternalCalendarChangeService
+    participant Policy as External Calendar Policy Engine
+    database DB as PostgreSQL
+
+    Client->>API: POST /internal/api/external-calendar-changes/{change_id}/process
+    API->>Process: Change ID and user ID
+    Process->>DB: Lock change; load owned mapping, session, plan, and Task
+    Process->>Process: Construct normalized aggregate
+    Process->>Policy: Evaluate aggregate and normalized change exactly once
+    Policy-->>Process: Typed decisions
+    Process->>Process: Validate supported decisions and targets
+    Process->>DB: Atomically update session, deadline history, findings, and processed status
+    Process-->>API: Stored deterministic result
+    API-->>Client: Processing result
+```
+
+The processor makes no Google call, invokes no scheduler, and neither resolves
+conflicts nor moves deleted work to backlog. Polling and webhooks are planned
+future triggers for pull synchronization; they are not implemented flows.

@@ -1,12 +1,21 @@
 # Roadmap
 
-Last verified against code: 2026-07-28
+Last verified against code: 2026-08-02
 
-Latest verified Alembic revision: `20260728_07`
+Latest verified Alembic revision: `20260731_10`
 
 This roadmap records dependency order, not delivery dates.
 
-## Implemented
+## Epic 1 — Calendar Engine
+
+Status: Complete
+
+Completed components include Google read-only integration, multi-account
+connections, SchedulePlan reservations and revalidation, ApplySchedulePlan,
+per-session event mapping, explicit pull synchronization, the pure External
+Calendar Policy Engine, and atomic external-change processing.
+
+### Implemented capability detail
 
 | Capability | Purpose | Dependencies | Non-goals |
 |---|---|---|---|
@@ -16,92 +25,32 @@ This roadmap records dependency order, not delivery dates.
 | Google read-only integration | Use real calendar availability. | OAuth, encrypted credentials, calendar selection, FreeBusy. | No event content or writes. |
 | SchedulePlan revalidation | Check immutable sessions against fresh provider busy data. | Confirmed plan, active connection, FreeBusy. | No rescheduling or apply. |
 | Reserved interval repository | Define which persisted plans block time. | SchedulePlan statuses and sessions. | Integrated with database-backed preview and revalidation. |
-| Calendar synchronization domain foundation | Define mappings, change audits, snapshots, hashing, consistency, and deadline policy. | Revision `20260728_07`. | Apply consumes mappings and snapshots; no polling or runtime reconciliation. |
+| Calendar synchronization | Apply plans, map events, detect external changes, evaluate pure policy, and atomically process decisions. | Revisions `20260728_07` through `20260731_10`. | No polling, webhooks, automatic rescheduling, or backlog transition. |
 
-## Next
+## Epic 2 — Planner
 
-### 1. ApplySchedulePlan — implemented
+Status: In progress (current focus)
 
-Purpose: perform final readiness validation and explicitly apply a confirmed
-plan.
+Suggested next scope, in dependency order:
 
-Dependencies: immutable write target snapshots, active connections, and the
-minimal Google event write scope.
+1. Backlog domain.
+2. Backlog API.
+3. Task lifecycle refinement.
+4. Manual retry and replanning actions.
+5. Planner-oriented read models.
 
-Non-goals: rescheduling or silently repairing conflicts.
+## Epic 3 — User Interface
 
-### 2. Mapping persistence during apply — implemented
+Status: Planned
 
-Purpose: create one `CalendarEventMapping` for every successfully created
-Google event.
+Build the authenticated product workflow after Planner contracts are stable.
 
-Dependencies: ApplySchedulePlan, provider idempotency strategy, per-session
-write target.
+## Epic 4 — Production Readiness
 
-Non-goals: duplicating external identity on `ScheduledSession`.
+Status: Planned
 
-### 3. Partial apply and idempotent retry — implemented
+Harden authentication, CI, observability, deployment, background
+synchronization, and operational safeguards. No delivery dates are assigned.
 
-Purpose: make `partially_applied` and retry transitions operational without
-duplicating events.
-
-Dependencies: durable mappings, safe provider error classification, readiness
-checks.
-
-Non-goals: best-effort success without an auditable result.
-
-### 4. Pull change detection — implemented
-
-Purpose: compare one mapped event with Google and record normalized changes.
-
-Dependencies: mappings created by apply, provider event reads, and change audit
-persistence.
-
-Non-goals: consistency checking, deadline changes, or moving user-edited events
-back automatically.
-
-### 5. External Calendar Policy Engine — implemented
-
-Purpose: deterministically translate normalized external state into immutable
-actions and conflict descriptions.
-
-Dependencies: normalized aggregate and external change values only.
-
-Non-goals: persistence, orchestration, provider calls, or ORM mutation.
-
-### 6. External change processing — implemented
-
-Purpose: explicitly load an aggregate, evaluate policy, and persist authorized
-decisions.
-
-Dependencies: pull detection and the pure Policy Engine.
-
-Non-goals: hidden rescheduling, automatic backlog placement, or provider-event
-recreation.
-
-### 7. Basic product UI
-
-Purpose: expose intake, confirmation, preview, plan review, apply, and conflict
-states through an authenticated product surface.
-
-Dependencies: production authentication and stable apply contracts.
-
-Non-goals: replacing the internal scheduling lab as a developer diagnostics
-tool.
-
-### 6. Backlog domain
-
-Purpose: define explicit handling of unscheduled or intentionally deferred work.
-
-Dependencies: product decisions for deletion, partial apply, and recovery.
-
-Non-goals: automatically returning externally deleted sessions to backlog.
-
-## Later
-
-| Capability | Purpose | Dependencies | Non-goals |
-|---|---|---|---|
-| Push/webhook-assisted synchronization | Reduce time before the next pull. | Stable production pull reconciliation and provider operations. | Push is not the source of truth. |
-| Advanced conflict resolution | Help users resolve inconsistent multi-session tasks. | Reconciliation diagnostics and product UI. | Automatic reversal of Google edits. |
-| Notifications | Surface apply and consistency outcomes. | Authenticated users and durable event/audit semantics. | No speculative alert SLA. |
-| Additional calendar providers | Reuse provider-neutral boundaries beyond Google. | Stable apply/reconciliation contracts. | Outlook or Apple Calendar is not committed MVP scope. |
+See the [epic overview](../epics.md) for navigation across the architecture
+documents.

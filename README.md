@@ -23,7 +23,11 @@ natural-language input
   → confirmation
   → read-only revalidation
   → explicit apply
+  → Google Calendar
   → pull synchronization
+  → ExternalCalendarChange
+  → External Calendar Policy Engine
+  → explicit external-change processing
 ```
 
 AI interpretation and scheduling are deliberately separate. The model converts
@@ -59,6 +63,8 @@ single-mapping pull synchronization. It requests `calendar.readonly` and
 - [x] Calendar synchronization domain and persistence foundation
 - [x] Explicit SchedulePlan apply with per-session Google event mappings
 - [x] Pull synchronization for one mapped Google event
+- [x] Pure External Calendar Policy Engine with typed decisions
+- [x] Atomic, idempotent `ExternalCalendarChange` processing
 
 ### Synchronization foundation and pull detection
 
@@ -73,20 +79,19 @@ single-mapping pull synchronization. It requests `calendar.readonly` and
 - [x] Multi-connection/account write-target representation in snapshots
 - [x] Half-open reserved-interval repository query with `exclude_plan_id`
 
-Pull synchronization records meaningful provider changes without invoking the
-consistency policies. A user may connect multiple Google accounts; each
-external account is unique per user.
+Pull synchronization records meaningful provider changes. A separate explicit
+processing endpoint loads the normalized aggregate, invokes the pure policy
+engine once, and atomically applies supported decisions. A user may connect
+multiple Google accounts; each external account is unique per user.
 
-### Planned
+### Not implemented
 
-- [x] `ApplySchedulePlan`
-- [x] Google Calendar event creation during explicit apply
-- [x] Pull detection of moved, resized, cancelled, and missing Google events
-- [ ] Consistency checking and reconciliation of detected changes
-- [ ] Explicit backlog behavior
-- [ ] Basic authenticated product UI
-- [ ] Optional push-assisted synchronization after pull reconciliation is
-  established
+- [ ] Backlog domain or backlog transitions
+- [ ] Authenticated product UI
+- [ ] Polling or background synchronization
+- [ ] Google Calendar webhooks
+- [ ] Automatic rescheduling after external changes
+- [ ] Google event update or delete flows
 
 ## Architecture principles
 
@@ -131,7 +136,7 @@ alembic upgrade head
 ```
 
 The container exposes PostgreSQL at `localhost:5432`. The latest migration is
-`20260730_08_multi_account_google_connections.py`, revision `20260730_08`.
+`20260731_10_process_external_calendar_changes.py`, revision `20260731_10`.
 
 Useful migration commands:
 
@@ -185,7 +190,7 @@ mypy app
 
 Integration tests require `TEST_DATABASE_URL`; they reject non-PostgreSQL URLs
 and database names that neither start with `test_` nor end with `_test`.
-The current baseline is 296 passing tests; Ruff, strict mypy for `app`, and
+The current baseline is 371 passing tests; Ruff, strict mypy for `app`, and
 Alembic upgrade/downgrade validation also pass.
 
 Stop local services with:
@@ -205,6 +210,7 @@ docker compose down
 - [Sequence diagrams](docs/architecture/sequences.md)
 - [Product decisions](docs/architecture/product-decisions.md)
 - [Architecture roadmap](docs/architecture/roadmap.md)
+- [Epic overview](docs/epics.md)
 - [OpenAPI documentation gaps](docs/architecture/openapi-gaps.md)
 - [ADR index](docs/architecture/adr/index.md)
 - [Product architecture](docs/product-architecture.md) — product principles,
