@@ -35,15 +35,16 @@ The Backlog Domain Foundation is implemented: typed reasons and statuses,
 partial-work accounting, lifecycle transitions, persistence, concurrency
 constraints, explicit origin semantics, and due-for-review repository support.
 Temporary calendar failures remain integration errors, and partial-work
-accounting reuses the Calendar Engine reservation policy. It does not expose an
-API or invoke scheduling automatically.
+accounting reuses the Calendar Engine reservation policy. The internal
+[Backlog API](../backlog.md) now exposes listing, creation, and explicit
+lifecycle operations. Neither the domain nor API invokes scheduling
+automatically.
 
 Next scope, in dependency order:
 
-1. Backlog API.
-2. Task lifecycle refinement.
-3. Manual retry and replanning actions.
-4. Planner-oriented read models.
+1. Task lifecycle refinement.
+2. Manual retry and replanning actions.
+3. Planner-oriented read models.
 
 ## Epic 3 — User Interface
 
