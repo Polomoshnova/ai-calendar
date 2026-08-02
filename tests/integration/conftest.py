@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.database import get_db
 from app.main import app
 from app.models import (
+    BacklogEntry,
     CalendarConnection,
     CalendarEventMapping,
     CalendarOAuthState,
@@ -57,6 +58,7 @@ TestSessionLocal = sessionmaker(bind=test_engine, expire_on_commit=False)
 @pytest.fixture
 def db_session() -> Generator[Session, None, None]:
     with TestSessionLocal() as session:
+        session.execute(delete(BacklogEntry))
         session.execute(delete(ExternalCalendarConsistencyFinding))
         session.execute(delete(TaskDeadlineHistory))
         session.execute(delete(ExternalCalendarChange))
@@ -73,6 +75,7 @@ def db_session() -> Generator[Session, None, None]:
         session.commit()
         yield session
         session.rollback()
+        session.execute(delete(BacklogEntry))
         session.execute(delete(ExternalCalendarConsistencyFinding))
         session.execute(delete(TaskDeadlineHistory))
         session.execute(delete(ExternalCalendarChange))

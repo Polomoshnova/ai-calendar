@@ -2,7 +2,7 @@
 
 Last verified against code: 2026-08-02
 
-Latest verified Alembic revision: `20260731_10`
+Latest verified Alembic revision: `20260802_11`
 
 This roadmap records dependency order, not delivery dates.
 
@@ -31,13 +31,19 @@ Calendar Policy Engine, and atomic external-change processing.
 
 Status: In progress (current focus)
 
-Suggested next scope, in dependency order:
+The Backlog Domain Foundation is implemented: typed reasons and statuses,
+partial-work accounting, lifecycle transitions, persistence, concurrency
+constraints, explicit origin semantics, and due-for-review repository support.
+Temporary calendar failures remain integration errors, and partial-work
+accounting reuses the Calendar Engine reservation policy. It does not expose an
+API or invoke scheduling automatically.
 
-1. Backlog domain.
-2. Backlog API.
-3. Task lifecycle refinement.
-4. Manual retry and replanning actions.
-5. Planner-oriented read models.
+Next scope, in dependency order:
+
+1. Backlog API.
+2. Task lifecycle refinement.
+3. Manual retry and replanning actions.
+4. Planner-oriented read models.
 
 ## Epic 3 — User Interface
 

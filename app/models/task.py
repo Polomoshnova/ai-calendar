@@ -20,6 +20,7 @@ from app.core.database import Base
 from app.domain.tasks import PreferredTimeOfDay, TaskPriority, TaskStatus
 
 if TYPE_CHECKING:
+    from app.models.backlog import BacklogEntry
     from app.models.user import User
 
 
@@ -77,3 +78,6 @@ class Task(Base):
     )
 
     user: Mapped["User"] = relationship(back_populates="tasks")
+    backlog_entries: Mapped[list["BacklogEntry"]] = relationship(
+        back_populates="task", cascade="all, delete-orphan"
+    )
