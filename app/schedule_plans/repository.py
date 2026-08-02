@@ -18,6 +18,11 @@ RESERVING_PLAN_STATUSES = frozenset(
 )
 
 
+def schedule_plan_status_reserves_time(status: SchedulePlanStatus) -> bool:
+    """Use the single reservation policy shared by planning consumers."""
+    return status in RESERVING_PLAN_STATUSES
+
+
 @dataclass(frozen=True)
 class ReservedInterval:
     plan_id: uuid.UUID

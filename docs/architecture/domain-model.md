@@ -2,7 +2,7 @@
 
 Last verified against code: 2026-08-02
 
-Latest verified Alembic revision: `20260731_10`
+Latest verified Alembic revision: `20260802_11`
 
 ## Overview
 
@@ -14,6 +14,8 @@ Pydantic models are typed application contracts.
 ```mermaid
 erDiagram
     USER ||--o{ TASK : owns
+    USER ||--o{ BACKLOG_ENTRY : owns
+    TASK ||--o{ BACKLOG_ENTRY : has_history
     USER ||--o{ CALENDAR_CONNECTION : connects
     CALENDAR_CONNECTION ||--o{ CALENDAR_SELECTION : contains
     USER ||--o{ SCHEDULE_PLAN : owns
@@ -84,6 +86,48 @@ day; timezone-aware optional dates; earliest start before deadline; a
 splittable task cannot have a minimum session longer than its duration.
 
 Status: implemented.
+
+### BacklogEntry
+
+Purpose: records why some or all of a Task's work is not assigned to a concrete
+schedule, which actor or subsystem created the entry, how many minutes remain,
+and when it should next be reviewed.
+Backlog is separate from `TaskStatus.pending`; neither state implies the other.
+
+Ownership and mutability: belongs to the same User as its Task. A Task has at
+most one `active` or `deferred` entry, enforced by a partial unique database
+index, while `resolved` and `cancelled` entries remain as history.
+
+Relations: belongs to one User and one Task. It does not own or mutate a
+SchedulePlan or ScheduledSession.
+
+Key invariants: open entries have positive remaining duration no greater than
+`Task.duration_minutes`; deferred entries require `deferred_until` or
+`next_review_at`; resolved entries require `resolved_at`; all supplied domain
+times are timezone-aware. `origin` is supplied explicitly as `user`,
+`scheduler`, `system`, or `calendar_sync`; it is not inferred from the reason.
+Manual defer is user-originated, while slot, capacity, horizon, and
+partial-scheduling outcomes are scheduler-originated. Reasons are
+`no_deadline`, `no_available_slot`,
+`insufficient_capacity`, `planning_horizon_exceeded`,
+`awaiting_user_confirmation`, `manual_defer`, `partially_scheduled`, and
+`other`. The `other` reason requires a meaningful explanatory note.
+
+Partial scheduling is represented by the positive duration left after sessions
+from reserving plans are subtracted from total Task duration. It uses the same
+central reservation policy as scheduling preview and revalidation: confirmed,
+revalidation-required, applying, applied, and partially-applied plans reserve
+time; proposed, failed, and obsolete plans do not. Only that remainder has
+backlog semantics. Deleted Google events do not create a backlog entry or imply
+unscheduled completion.
+
+Temporary provider and OAuth failures remain integration errors rather than a
+backlog reason. `calendar_sync` is available as an origin only for an explicit
+calendar synchronization decision; no automatic creation exists.
+
+Status: domain model, lifecycle service, persistence, locking, and review-query
+foundation are implemented. HTTP API, UI, automatic scheduling, and automatic
+review are planned separately.
 
 ### TaskDraftV2
 

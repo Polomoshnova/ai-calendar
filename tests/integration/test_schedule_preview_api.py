@@ -428,6 +428,7 @@ def test_preview_creates_no_database_rows(
     assert after == before
     assert set(after) == {
         "users",
+        "backlog_entries",
         "user_preferences",
         "tasks",
         "calendar_connections",

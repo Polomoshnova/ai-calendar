@@ -1,3 +1,4 @@
+from app.models.backlog import BacklogEntry
 from app.models.calendar_sync import (
     CalendarEventMapping,
     ConsistencyIssueCode,
@@ -16,6 +17,7 @@ from app.schedule_plans.models import ScheduledSession, SchedulePlan
 from app.schedule_plans.revalidation_models import SchedulePlanRevalidation
 
 __all__ = [
+    "BacklogEntry",
     "CalendarConnection",
     "CalendarConnectionStatus",
     "CalendarOAuthState",

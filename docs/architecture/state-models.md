@@ -1,8 +1,43 @@
 # State models
 
-Last verified against code: 2026-07-28
+Last verified against code: 2026-08-02
 
-Latest verified Alembic revision: `20260730_09`
+Latest verified Alembic revision: `20260802_11`
+
+## BacklogEntry lifecycle
+
+Backlog is a separate lifecycle from `TaskStatus.pending`. An entry represents
+only the currently unscheduled remainder of a Task.
+
+Every entry records an explicit origin (`user`, `scheduler`, `system`, or
+`calendar_sync`) separately from its reason. `other` requires a non-blank
+explanatory note. Temporary calendar access failures remain integration errors,
+not backlog reasons.
+
+```mermaid
+stateDiagram-v2
+    [*] --> active: create
+    active --> deferred: defer
+    deferred --> active: reactivate
+    active --> resolved: condition removed
+    deferred --> resolved: condition removed
+    active --> cancelled: cancel tracking
+    deferred --> cancelled: cancel tracking
+    resolved --> [*]
+    cancelled --> [*]
+```
+
+`resolved` and `cancelled` are terminal for an individual entry. If the Task
+later needs backlog again, the service creates a new entry and preserves the
+historical one. A partial unique index permits only one `active` or `deferred`
+entry per Task. Lifecycle transitions lock the entry row; creation first locks
+the owning Task row so concurrent equivalent requests return the same entry.
+
+No transition calls the scheduler. Review timestamps support a deterministic
+due-for-review query only; no polling, worker, reminder, or automatic review is
+implemented. External Google event deletion does not trigger this lifecycle.
+Remaining-duration calculation shares the SchedulePlan reservation policy used
+by scheduling preview and revalidation.
 
 ## SchedulePlan lifecycle
 
@@ -71,7 +106,7 @@ stateDiagram-v2
 There is no dedicated Task transition policy. The update schema accepts a valid
 enum value and the CRUD service applies it, so the API technically permits any
 transition among these states. Backlog is not a Task status and is not
-implemented.
+implemented as a Task state. Backlog is implemented as a separate entity.
 
 Only pending Tasks are loaded by database-backed scheduling preview.
 

@@ -26,11 +26,17 @@ need user attention.
 
 Initial scope:
 
-- backlog domain;
+- backlog domain (foundation implemented);
 - backlog reasons;
 - rescheduling entry points;
 - task state transitions;
 - planner read models.
+
+The current foundation keeps backlog separate from `TaskStatus.pending`,
+supports partial unscheduled duration and explicit lifecycle transitions, and
+records origin separately from reason. `other` requires an explanatory note;
+temporary calendar failures do not enter backlog automatically. The foundation
+does not add API, UI, automatic scheduling, or background review behavior.
 
 See the [architecture roadmap](architecture/roadmap.md), [state
 models](architecture/state-models.md), and [product
