@@ -3,8 +3,11 @@ from app.models.calendar_sync import (
     ConsistencyIssueCode,
     ConsistencyStatus,
     ExternalCalendarChange,
+    ExternalCalendarConsistencyFinding,
+    ExternalChangeProcessingStatus,
     ExternalChangeType,
     SyncStatus,
+    TaskDeadlineHistory,
 )
 from app.models.task import Task
 from app.models.user import User
@@ -20,8 +23,11 @@ __all__ = [
     "CalendarSelection",
     "CalendarEventMapping",
     "ExternalCalendarChange",
+    "ExternalCalendarConsistencyFinding",
+    "ExternalChangeProcessingStatus",
     "SyncStatus",
     "ExternalChangeType",
+    "TaskDeadlineHistory",
     "ConsistencyStatus",
     "ConsistencyIssueCode",
     "Task",

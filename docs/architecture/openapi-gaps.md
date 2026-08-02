@@ -2,7 +2,7 @@
 
 Last verified against code: 2026-07-28
 
-Latest verified Alembic revision: `20260730_09`
+Latest verified Alembic revision: `20260731_10`
 
 ## Review result
 
@@ -22,6 +22,7 @@ The following paths were verified from router prefixes and decorators:
 - `POST /internal/api/schedule-plans/{plan_id}/revalidate`
 - `POST /internal/api/schedule-plans/{plan_id}/apply`
 - `POST /internal/api/calendar-event-mappings/{mapping_id}/sync`
+- `POST /internal/api/external-calendar-changes/{change_id}/process`
 - `GET /internal/api/schedule-plans/{plan_id}/revalidations`
 - `POST /internal/api/calendar/google/oauth/start`
 - `GET /internal/api/calendar/google/oauth/callback`

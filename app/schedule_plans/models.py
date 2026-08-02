@@ -325,6 +325,17 @@ def _protect_confirmed_plan_content(
             if _original_plan_status(plan) not in _IMMUTABLE_PLAN_STATUSES:
                 continue
             state = inspect(item)
+            allowed_external_changes = session.info.get(
+                "external_calendar_session_time_updates", set()
+            )
+            if item.id in allowed_external_changes:
+                changed_fields = {
+                    field
+                    for field in _IMMUTABLE_SESSION_FIELDS
+                    if state.attrs[field].history.has_changes()
+                }
+                if changed_fields <= {"start", "end", "duration_minutes"}:
+                    continue
             if any(
                 state.attrs[field].history.has_changes()
                 for field in _IMMUTABLE_SESSION_FIELDS

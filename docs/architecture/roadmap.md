@@ -69,7 +69,7 @@ Dependencies: normalized aggregate and external change values only.
 
 Non-goals: persistence, orchestration, provider calls, or ORM mutation.
 
-### 6. External change processing — planned
+### 6. External change processing — implemented
 
 Purpose: explicitly load an aggregate, evaluate policy, and persist authorized
 decisions.

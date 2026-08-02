@@ -3,7 +3,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -28,6 +28,13 @@ class ExternalChangeType(StrEnum):
     updated = "updated"
     moved = "moved"
     deleted = "deleted"
+
+
+class ExternalChangeProcessingStatus(StrEnum):
+    pending = "pending"
+    processing = "processing"
+    processed = "processed"
+    failed = "failed"
 
 
 class ConsistencyStatus(StrEnum):
@@ -163,5 +170,95 @@ class ExternalCalendarChange(Base):
     processed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    processing_status: Mapped[ExternalChangeProcessingStatus] = mapped_column(
+        Enum(
+            ExternalChangeProcessingStatus,
+            name="external_calendar_change_processing_status",
+        ),
+        nullable=False,
+        default=ExternalChangeProcessingStatus.pending,
+        index=True,
+    )
+    processing_result: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
+    )
 
     mapping: Mapped[CalendarEventMapping] = relationship(back_populates="changes")
+
+
+class TaskDeadlineHistory(Base):
+    __tablename__ = "task_deadline_history"
+    __table_args__ = (
+        UniqueConstraint(
+            "external_calendar_change_id",
+            name="uq_task_deadline_history_external_change",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tasks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    external_calendar_change_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("external_calendar_changes.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    previous_deadline: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    new_deadline: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    reason: Mapped[str] = mapped_column(String(100), nullable=False)
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class ExternalCalendarConsistencyFinding(Base):
+    __tablename__ = "external_calendar_consistency_findings"
+    __table_args__ = (
+        UniqueConstraint(
+            "external_calendar_change_id",
+            "code",
+            "identity_key",
+            name="uq_external_calendar_finding_identity",
+        ),
+        Index(
+            "ix_external_calendar_findings_change",
+            "external_calendar_change_id",
+        ),
+        Index("ix_external_calendar_findings_plan", "schedule_plan_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    external_calendar_change_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("external_calendar_changes.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    schedule_plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("schedule_plans.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    scheduled_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("scheduled_sessions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    code: Mapped[str] = mapped_column(String(100), nullable=False)
+    severity: Mapped[str] = mapped_column(String(30), nullable=False)
+    identity_key: Mapped[str] = mapped_column(String(500), nullable=False)
+    details: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    detected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
