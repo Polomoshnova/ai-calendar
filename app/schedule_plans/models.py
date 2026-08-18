@@ -23,6 +23,7 @@ from app.core.database import Base
 from app.schedule_plans.errors import SchedulePlanImmutableError
 
 if TYPE_CHECKING:
+    from app.models.backlog import BacklogEntry
     from app.models.calendar_sync import CalendarEventMapping
     from app.schedule_plans.revalidation_models import SchedulePlanRevalidation
 
@@ -66,11 +67,6 @@ class SchedulePlan(Base):
             "version",
             name="uq_schedule_plans_group_version",
         ),
-        UniqueConstraint(
-            "task_id",
-            "version",
-            name="uq_schedule_plans_task_version",
-        ),
         UniqueConstraint("idempotency_key", name="uq_schedule_plans_idempotency_key"),
     )
 
@@ -86,6 +82,12 @@ class SchedulePlan(Base):
     task_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("tasks.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    backlog_entry_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("backlog_entries.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -157,6 +159,9 @@ class SchedulePlan(Base):
         back_populates="plan",
         cascade="all, delete-orphan",
         order_by="ScheduledSession.order",
+    )
+    backlog_entry: Mapped["BacklogEntry | None"] = relationship(
+        back_populates="schedule_plans"
     )
     revalidations: Mapped[list["SchedulePlanRevalidation"]] = relationship(
         back_populates="plan",

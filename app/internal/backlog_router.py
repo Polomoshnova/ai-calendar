@@ -23,6 +23,7 @@ from app.backlog.schemas import (
     BacklogEntryCreateRequest,
     BacklogEntryResponse,
     BacklogNoteRequest,
+    BacklogSchedulePlanCreateRequest,
     BacklogSchedulePreviewRequest,
     BacklogSchedulePreviewResponse,
 )
@@ -33,13 +34,17 @@ from app.backlog.service import (
     BacklogPreviewNotAllowedError,
     cancel_backlog_entry,
     create_backlog_entry,
+    create_backlog_schedule_plan,
     defer_backlog_entry,
     preview_backlog_entry_schedule,
     reactivate_backlog_entry,
     resolve_backlog_entry,
 )
 from app.internal.dependencies import InternalToolsEnabled
+from app.internal.schedule_plans_router import schedule_plan_response
 from app.models import Task, User
+from app.schedule_plans.errors import SchedulePlanValidationError
+from app.schedule_plans.schemas import SchedulePlanResponse
 from app.schemas.scheduling import SchedulePreviewResponse
 
 router = APIRouter(prefix="/internal/api/backlog", tags=["internal-backlog"])
@@ -297,3 +302,40 @@ def schedule_preview_entry(
         schedule_preview=preview,
         unscheduled_reason=unscheduled_reason,
     )
+
+
+@router.post(
+    "/{entry_id}/schedule-plan",
+    response_model=SchedulePlanResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a SchedulePlan from a backlog preview",
+    description=(
+        "Persists the explicitly selected backlog preview as an idempotent "
+        "proposed SchedulePlan with calendar provenance snapshots. This endpoint "
+        "does not confirm the plan, change backlog state, rerun scheduling, or "
+        "write Google Calendar."
+    ),
+)
+def create_schedule_plan_entry(
+    entry_id: uuid.UUID,
+    user_id: uuid.UUID,
+    data: BacklogSchedulePlanCreateRequest,
+    session: DatabaseSession,
+    _enabled: InternalToolsEnabled,
+) -> SchedulePlanResponse:
+    try:
+        plan = create_backlog_schedule_plan(
+            session,
+            entry_id=entry_id,
+            user_id=user_id,
+            scheduling_attempt_count=data.scheduling_attempt_count,
+            schedule_preview=data.schedule_preview,
+            planning_context=data.planning_context,
+            confirmation_note=data.confirmation_note,
+            client_idempotency_key=data.idempotency_key,
+        )
+    except BacklogDomainError as exc:
+        raise _http_error(exc) from exc
+    except SchedulePlanValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return schedule_plan_response(plan)

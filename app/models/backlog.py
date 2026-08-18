@@ -22,6 +22,7 @@ from app.core.database import Base
 if TYPE_CHECKING:
     from app.models.task import Task
     from app.models.user import User
+    from app.schedule_plans.models import SchedulePlan
 
 
 class BacklogEntry(Base):
@@ -120,3 +121,6 @@ class BacklogEntry(Base):
 
     task: Mapped["Task"] = relationship(back_populates="backlog_entries")
     user: Mapped["User"] = relationship(back_populates="backlog_entries")
+    schedule_plans: Mapped[list["SchedulePlan"]] = relationship(
+        back_populates="backlog_entry"
+    )

@@ -56,11 +56,12 @@ router = APIRouter(
 )
 
 
-def _response(plan: SchedulePlan) -> SchedulePlanResponse:
+def schedule_plan_response(plan: SchedulePlan) -> SchedulePlanResponse:
     return SchedulePlanResponse(
         id=plan.id,
         user_id=plan.user_id,
         task_id=plan.task_id,
+        backlog_entry_id=plan.backlog_entry_id,
         plan_group_id=plan.plan_group_id,
         version=plan.version,
         source=plan.source,
@@ -170,7 +171,7 @@ def create_from_preview(
         SchedulePlanValidationError,
     ) as exc:
         raise _http_error(exc) from exc
-    return _response(plan)
+    return schedule_plan_response(plan)
 
 
 @router.get(
@@ -185,7 +186,7 @@ def read_plan(
     plan = get_schedule_plan(session, plan_id)
     if plan is None:
         raise HTTPException(status_code=404, detail="Schedule plan not found")
-    return _response(plan)
+    return schedule_plan_response(plan)
 
 
 @router.get(
@@ -205,7 +206,7 @@ def read_user_plans(
         raise HTTPException(status_code=404, detail="User not found")
     return SchedulePlanListResponse(
         plans=[
-            _response(plan)
+            schedule_plan_response(plan)
             for plan in list_schedule_plans(
                 session,
                 user_id=user_id,
@@ -229,14 +230,18 @@ def confirm_plan(
     _enabled: InternalToolsEnabled,
 ) -> SchedulePlanResponse:
     try:
-        return _response(
+        return schedule_plan_response(
             confirm_schedule_plan(
                 session,
                 plan_id,
                 confirmation_note=data.confirmation_note,
             )
         )
-    except (InvalidPlanTransitionError, SchedulePlanNotFoundError) as exc:
+    except (
+        InvalidPlanTransitionError,
+        SchedulePlanNotFoundError,
+        SchedulePlanValidationError,
+    ) as exc:
         raise _http_error(exc) from exc
 
 
@@ -250,7 +255,7 @@ def obsolete_plan(
     _enabled: InternalToolsEnabled,
 ) -> SchedulePlanResponse:
     try:
-        return _response(obsolete_schedule_plan(session, plan_id))
+        return schedule_plan_response(obsolete_schedule_plan(session, plan_id))
     except (InvalidPlanTransitionError, SchedulePlanNotFoundError) as exc:
         raise _http_error(exc) from exc
 

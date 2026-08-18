@@ -88,6 +88,32 @@ Reservation is defined by the repository query and plan status. Confirmation
 does not call that query, create a separate reservation row, or write Google
 events.
 
+### Backlog-originated SchedulePlan
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant API as Backlog and SchedulePlan API
+    participant Plan as Existing SchedulePlan service
+    participant Reserve as Shared reservation policy
+    database DB as PostgreSQL
+
+    User->>API: POST /backlog/{id}/schedule-plan with selected preview attempt
+    API->>DB: Lock owned active/deferred entry and load Task
+    API->>Plan: Validate selection and create plan with backlog_entry_id
+    Plan->>DB: Persist proposed plan, sessions, and calendar snapshots
+    Plan-->>User: Proposed SchedulePlan
+    Note over API,DB: Preview and proposed plan do not change backlog
+    User->>API: POST /schedule-plans/{plan_id}/confirm
+    API->>Plan: Existing confirm lifecycle
+    Plan->>DB: Lock plan and linked backlog entry
+    Plan->>Reserve: Recalculate from all reserving sessions
+    Reserve-->>Plan: Current remaining duration
+    Plan->>DB: Atomically confirm plan and update or resolve backlog
+    Plan-->>User: Confirmed SchedulePlan
+    Note over API,Plan: No scheduler rerun and no Google write
+```
+
 ## SchedulePlan revalidation
 
 All calls in this sequence are implemented.

@@ -143,6 +143,7 @@ class SchedulePlanResponse(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
     task_id: uuid.UUID | None
+    backlog_entry_id: uuid.UUID | None
     plan_group_id: uuid.UUID
     version: int
     source: SchedulePlanSource

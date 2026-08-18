@@ -5,6 +5,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.backlog.domain import BacklogOrigin, BacklogReason, BacklogStatus
+from app.schedule_plans.schemas import SchedulePlanContext
 from app.scheduling.types import UnscheduledReasonCode
 from app.schemas.scheduling import (
     MAX_PLANNING_HORIZON,
@@ -134,3 +135,54 @@ class BacklogSchedulePreviewResponse(BaseModel):
     scheduling_attempt_count: int
     schedule_preview: SchedulePreviewResponse
     unscheduled_reason: UnscheduledReasonCode | None = None
+
+
+class BacklogSchedulePlanCreateRequest(BacklogRequest):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "scheduling_attempt_count": 2,
+                    "schedule_preview": {
+                        "scheduler_version": "2a.1",
+                        "planning_window": {
+                            "start": "2026-08-18T08:00:00Z",
+                            "end": "2026-08-18T18:00:00Z",
+                        },
+                        "free_intervals": [],
+                        "scheduled_blocks": [
+                            {
+                                "task_id": "22222222-2222-2222-2222-222222222222",
+                                "start": "2026-08-18T09:00:00Z",
+                                "end": "2026-08-18T10:00:00Z",
+                                "reason_codes": ["only_available_slot"],
+                                "score_components": [],
+                            }
+                        ],
+                        "unscheduled_tasks": [],
+                        "warnings": [],
+                    },
+                    "planning_context": {
+                        "timezone": "Europe/Warsaw",
+                        "planning_window_start": "2026-08-18T08:00:00Z",
+                        "planning_window_end": "2026-08-18T18:00:00Z",
+                        "scheduler_version": "2a.1",
+                        "calendar_context": {
+                            "provider": "google",
+                            "calendar_ids": ["primary"],
+                            "provider_busy_interval_count": 2,
+                            "merged_busy_interval_count": 3,
+                        },
+                        "preferences_snapshot": {},
+                    },
+                }
+            ]
+        },
+    )
+
+    scheduling_attempt_count: int = Field(ge=1)
+    schedule_preview: SchedulePreviewResponse
+    planning_context: SchedulePlanContext
+    confirmation_note: str | None = Field(default=None, max_length=2000)
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=255)

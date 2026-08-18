@@ -12,11 +12,20 @@ from app.schedule_plans.models import (
     SchedulePlanSource,
     SchedulePlanStatus,
 )
-from app.schedule_plans.service import (
-    confirm_schedule_plan,
-    create_schedule_plan_from_preview,
-    obsolete_schedule_plan,
-)
+
+
+def __getattr__(name: str) -> object:
+    """Keep service exports lazy so model imports do not create domain cycles."""
+    if name in {
+        "confirm_schedule_plan",
+        "create_schedule_plan_from_preview",
+        "obsolete_schedule_plan",
+    }:
+        from app.schedule_plans import service
+
+        return getattr(service, name)
+    raise AttributeError(name)
+
 
 __all__ = [
     "InvalidPlanTransitionError",
