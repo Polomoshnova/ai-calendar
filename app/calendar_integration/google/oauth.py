@@ -48,7 +48,7 @@ class GoogleOAuthClient:
             "include_granted_scopes": "true",
         }
         if prompt_consent:
-            parameters["prompt"] = "consent select_account"
+            parameters["prompt"] = "consent"
         return f"{AUTHORIZATION_ENDPOINT}?{urlencode(parameters)}"
 
     async def exchange_code(self, code: str) -> GoogleTokenSet:
