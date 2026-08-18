@@ -39,19 +39,25 @@ def test_fernet_cipher_encrypts_and_decrypts_without_plaintext() -> None:
     assert cipher.decrypt(encrypted) == "private-access-token"
 
 
-def test_oauth_authorization_url_is_read_only_and_safe() -> None:
+def test_oauth_authorization_url_requests_calendar_scopes_and_consent() -> None:
     oauth = GoogleOAuthClient(
         httpx.AsyncClient(),
         GoogleOAuthConfig(
             client_id="public-client-id",
             client_secret="private-secret",
             redirect_uri="http://127.0.0.1:8000/internal/api/calendar/google/oauth/callback",
-            scopes=("https://www.googleapis.com/auth/calendar.readonly",),
+            scopes=(
+                "https://www.googleapis.com/auth/calendar.readonly",
+                "https://www.googleapis.com/auth/calendar.events",
+            ),
         ),
     )
     query = parse_qs(urlparse(oauth.authorization_url("random-state")).query)
 
-    assert query["scope"] == ["https://www.googleapis.com/auth/calendar.readonly"]
+    assert query["scope"] == [
+        "https://www.googleapis.com/auth/calendar.readonly "
+        "https://www.googleapis.com/auth/calendar.events"
+    ]
     assert query["access_type"] == ["offline"]
     assert query["include_granted_scopes"] == ["true"]
     assert query["state"] == ["random-state"]
@@ -63,7 +69,18 @@ def test_oauth_authorization_url_is_read_only_and_safe() -> None:
     account_query = parse_qs(
         urlparse(oauth.authorization_url("account-state", prompt_consent=True)).query
     )
-    assert account_query["prompt"] == ["consent select_account"]
+    assert account_query["prompt"] == ["consent"]
+    assert "consent select_account" not in account_query["prompt"]
+    assert account_query["scope"] == [
+        "https://www.googleapis.com/auth/calendar.readonly "
+        "https://www.googleapis.com/auth/calendar.events"
+    ]
+    assert account_query["access_type"] == ["offline"]
+    assert account_query["include_granted_scopes"] == ["true"]
+    assert account_query["state"] == ["account-state"]
+    assert account_query["redirect_uri"] == [
+        "http://127.0.0.1:8000/internal/api/calendar/google/oauth/callback"
+    ]
 
 
 def test_busy_normalization_merges_overlap_touch_and_calendars() -> None:
