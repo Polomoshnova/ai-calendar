@@ -8,11 +8,21 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.backlog.domain import (
+    OPEN_BACKLOG_STATUSES,
+    BacklogOrigin,
+    BacklogReason,
+    BacklogStatus,
+    calculate_remaining_unscheduled_duration,
+    validate_backlog_values,
+)
+from app.backlog.repository import get_entry_for_transition, list_task_sessions
 from app.calendar_sync.snapshots import (
     BusySourceSnapshot,
     SessionWriteTargetSnapshot,
     calendar_context_hash,
 )
+from app.models.backlog import BacklogEntry
 from app.models.calendar import (
     CalendarConnection,
     CalendarProviderName,
@@ -81,6 +91,14 @@ def _validate_preview(
     schedule_preview: SchedulePreviewResponse,
     context: SchedulePlanContext,
 ) -> list[tuple[datetime, datetime, int]]:
+    if any(
+        value.tzinfo is None or value.utcoffset() is None
+        for block in schedule_preview.scheduled_blocks
+        for value in (block.start, block.end)
+    ):
+        raise SchedulePlanValidationError(
+            "scheduled session datetimes must be timezone-aware"
+        )
     blocks = sorted(
         schedule_preview.scheduled_blocks,
         key=lambda block: (_as_utc(block.start), _as_utc(block.end)),
@@ -145,6 +163,7 @@ def _derived_idempotency_key(
     *,
     user_id: uuid.UUID,
     task_id: uuid.UUID | None,
+    backlog_entry_id: uuid.UUID | None,
     plan_group_id: uuid.UUID | None,
     source: SchedulePlanSource,
     scheduler_version: str,
@@ -153,6 +172,9 @@ def _derived_idempotency_key(
     payload = {
         "user_id": str(user_id),
         "task_id": str(task_id) if task_id is not None else None,
+        "backlog_entry_id": (
+            str(backlog_entry_id) if backlog_entry_id is not None else None
+        ),
         "plan_group_id": (str(plan_group_id) if plan_group_id is not None else None),
         "source": source.value,
         "scheduler_version": scheduler_version,
@@ -344,6 +366,7 @@ def create_schedule_plan_from_preview(
     planning_context: SchedulePlanContext,
     source: SchedulePlanSource,
     task_id: uuid.UUID | None = None,
+    backlog_entry_id: uuid.UUID | None = None,
     plan_group_id: uuid.UUID | None = None,
     confirmation_note: str | None = None,
     idempotency_key: str | None = None,
@@ -356,6 +379,18 @@ def create_schedule_plan_from_preview(
             raise SchedulePlanValidationError(
                 "task must exist and belong to the schedule plan user"
             )
+    if backlog_entry_id is not None:
+        backlog_entry = get_entry_for_transition(
+            session, backlog_entry_id, user_id=user_id
+        )
+        if backlog_entry is None:
+            raise SchedulePlanValidationError(
+                "backlog entry must exist and belong to the schedule plan user"
+            )
+        if task_id is None or backlog_entry.task_id != task_id:
+            raise SchedulePlanValidationError(
+                "backlog entry and schedule plan must reference the same task"
+            )
     normalized_blocks = _validate_preview(
         confirmed_task,
         schedule_preview,
@@ -364,6 +399,7 @@ def create_schedule_plan_from_preview(
     key = idempotency_key or _derived_idempotency_key(
         user_id=user_id,
         task_id=task_id,
+        backlog_entry_id=backlog_entry_id,
         plan_group_id=plan_group_id,
         source=source,
         scheduler_version=schedule_preview.scheduler_version,
@@ -415,6 +451,7 @@ def create_schedule_plan_from_preview(
         id=plan_id,
         user_id=user_id,
         task_id=task_id,
+        backlog_entry_id=backlog_entry_id,
         plan_group_id=group_id,
         source=source,
         version=version,
@@ -492,15 +529,91 @@ def confirm_schedule_plan(
         raise InvalidPlanTransitionError(
             f"cannot confirm plan in {plan.status.value} status"
         )
-    transition_schedule_plan(plan, SchedulePlanStatus.confirmed)
-    plan.confirmed_at = now or datetime.now(UTC)
-    if confirmation_note is not None:
-        plan.confirmation_note = confirmation_note
-    for scheduled_session in plan.sessions:
-        scheduled_session.status = ScheduledSessionStatus.confirmed
-    session.commit()
+    effective_now = now or datetime.now(UTC)
+    backlog_entry = None
+    task = None
+    if plan.backlog_entry_id is not None:
+        backlog_entry = get_entry_for_transition(
+            session, plan.backlog_entry_id, user_id=plan.user_id
+        )
+        if backlog_entry is None:
+            raise SchedulePlanValidationError("Linked backlog entry not found")
+        if backlog_entry.status not in OPEN_BACKLOG_STATUSES:
+            raise SchedulePlanValidationError(
+                f"cannot confirm a plan for a {backlog_entry.status.value} "
+                "backlog entry"
+            )
+        if plan.task_id is None or backlog_entry.task_id != plan.task_id:
+            raise SchedulePlanValidationError(
+                "linked backlog entry and plan must reference the same task"
+            )
+        task = session.get(Task, plan.task_id)
+        if task is None or task.user_id != plan.user_id:
+            raise SchedulePlanValidationError("Linked backlog task not found")
+        remaining_before_confirmation = calculate_remaining_unscheduled_duration(
+            task.duration_minutes,
+            list_task_sessions(session, task_id=task.id),
+        )
+        selected_duration = sum(item.duration_minutes for item in plan.sessions)
+        if selected_duration > remaining_before_confirmation:
+            raise SchedulePlanValidationError(
+                "schedule plan duration exceeds current remaining backlog work"
+            )
+    try:
+        transition_schedule_plan(plan, SchedulePlanStatus.confirmed)
+        plan.confirmed_at = effective_now
+        if confirmation_note is not None:
+            plan.confirmation_note = confirmation_note
+        for scheduled_session in plan.sessions:
+            scheduled_session.status = ScheduledSessionStatus.confirmed
+        if backlog_entry is not None and task is not None:
+            _update_backlog_after_confirmation(
+                session,
+                backlog_entry=backlog_entry,
+                task=task,
+                resolved_at=effective_now,
+            )
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
     session.refresh(plan)
     return plan
+
+
+def _update_backlog_after_confirmation(
+    session: Session,
+    *,
+    backlog_entry: BacklogEntry,
+    task: Task,
+    resolved_at: datetime,
+) -> None:
+    """Recalculate backlog state after the linked plan starts reserving time."""
+    remaining = calculate_remaining_unscheduled_duration(
+        task.duration_minutes,
+        list_task_sessions(session, task_id=task.id),
+    )
+    backlog_entry.remaining_duration_minutes = remaining
+    if remaining == 0:
+        backlog_entry.status = BacklogStatus.resolved
+        backlog_entry.resolved_at = resolved_at
+    else:
+        backlog_entry.reason = BacklogReason.partially_scheduled
+        backlog_entry.origin = BacklogOrigin.scheduler
+    validate_backlog_values(
+        origin=backlog_entry.origin,
+        reason=backlog_entry.reason,
+        note=backlog_entry.note,
+        status=backlog_entry.status,
+        remaining_duration_minutes=backlog_entry.remaining_duration_minutes,
+        task_duration_minutes=task.duration_minutes,
+        entered_at=backlog_entry.entered_at,
+        next_review_at=backlog_entry.next_review_at,
+        deferred_until=backlog_entry.deferred_until,
+        resolved_at=backlog_entry.resolved_at,
+        scheduling_attempt_count=backlog_entry.scheduling_attempt_count,
+        last_scheduling_attempt_at=backlog_entry.last_scheduling_attempt_at,
+    )
 
 
 def obsolete_schedule_plan(

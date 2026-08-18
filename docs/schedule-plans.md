@@ -36,6 +36,7 @@ All routes require `ENABLE_INTERNAL_TOOLS=true` and return `404` otherwise:
 - `GET /internal/api/users/{user_id}/schedule-plans`
 - `POST /internal/api/schedule-plans/{plan_id}/confirm`
 - `POST /internal/api/schedule-plans/{plan_id}/obsolete`
+- `POST /internal/api/backlog/{entry_id}/schedule-plan?user_id=...`
 
 Production APIs must derive `user_id` from an authenticated principal. Accepting
 it in the request is limited to these internal development routes.
@@ -111,6 +112,23 @@ returns the existing plan without duplicating sessions.
 Confirmation and obsolete operations are also idempotent. Once confirmed,
 session title, description, start, end, duration, task, step, and order are
 immutable. No session update route exists.
+
+## Backlog provenance
+
+`SchedulePlan.backlog_entry_id` is a nullable foreign key. Normal plans keep it
+null. Plans created from an explicitly selected backlog preview store the entry
+ID, while the preview's `scheduling_attempt_count` participates in the derived
+idempotency identity. The same selection returns the existing proposed plan;
+a genuinely new preview attempt can create a separate plan group for the same
+Task. Plan-group/version remains the revision uniqueness boundary, allowing
+multiple independent backlog plans for one Task.
+
+Backlog → preview → proposed SchedulePlan does not mutate backlog state. During
+the existing proposed → confirmed transition, the plan and linked entry are
+locked, the plan sessions begin reserving time, and remaining work is
+recalculated through the shared reservation policy. Plan confirmation and the
+partial or full backlog update commit atomically. Unlinked, proposed, obsolete,
+and failed plans do not update backlog.
 
 ## Snapshots
 

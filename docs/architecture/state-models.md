@@ -1,8 +1,8 @@
 # State models
 
-Last verified against code: 2026-08-02
+Last verified against code: 2026-08-18
 
-Latest verified Alembic revision: `20260802_11`
+Latest verified Alembic revision: `20260818_12`
 
 ## BacklogEntry lifecycle
 
@@ -39,6 +39,12 @@ implemented. External Google event deletion does not trigger this lifecycle.
 Remaining-duration calculation shares the SchedulePlan reservation policy used
 by scheduling preview and revalidation.
 
+A linked proposed SchedulePlan does not change an entry. Successful confirmation
+recalculates remaining work atomically with the plan transition. Partial work
+keeps the existing active/deferred status and changes the reason to
+`partially_scheduled`; zero remaining work transitions the entry to `resolved`
+and populates `resolved_at`. Repeated confirmation is a no-op for both models.
+
 ## SchedulePlan lifecycle
 
 `SchedulePlanStatus` contains `proposed`, `confirmed`, `obsolete`,
@@ -71,6 +77,11 @@ Obsoletion changes them to `obsolete`. Other `ScheduledSessionStatus` values
 Reservation follows plan status rather than session status. Confirmed,
 revalidation-required, applying, applied, and partially-applied plans reserve
 time.
+
+For a plan with `backlog_entry_id`, the proposed-to-confirmed transition also
+locks the linked entry and recalculates it from all currently reserving
+sessions. No other plan transition changes backlog. Plans without provenance
+retain the original lifecycle behavior.
 
 ## CalendarEventMapping synchronization lifecycle
 

@@ -1,8 +1,8 @@
 # Roadmap
 
-Last verified against code: 2026-08-02
+Last verified against code: 2026-08-18
 
-Latest verified Alembic revision: `20260802_11`
+Latest verified Alembic revision: `20260818_12`
 
 This roadmap records dependency order, not delivery dates.
 
@@ -42,12 +42,14 @@ automatically. Explicit retry scheduling preview is now implemented for active
 and deferred entries, using current partial-work accounting, request busy
 intervals, and shared SchedulePlan reservations. It records attempt metadata
 without creating a plan, writing a calendar, or transitioning backlog state.
+Explicit selected-preview persistence and confirmation are now connected:
+proposed plans carry nullable backlog provenance, and successful confirmation
+atomically recalculates partial or fully resolved backlog work.
 
 Next scope, in dependency order:
 
 1. Task lifecycle refinement.
-2. SchedulePlan creation from an explicitly accepted backlog preview.
-3. Planner-oriented read models.
+2. Planner-oriented read models.
 
 ## Epic 3 — User Interface
 
