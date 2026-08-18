@@ -36,20 +36,56 @@ def preview_schedule(
 
     planning = planning_window.as_utc()
     tasks = _load_preview_tasks(session, user_id, planning)
+    return _preview_with_reservations(
+        session=session,
+        user_id=user_id,
+        planning_window=planning,
+        busy_intervals=busy_intervals,
+        tasks=tuple(scheduling_task_from_model(task) for task in tasks),
+    )
+
+
+def preview_scheduling_task(
+    session: Session,
+    user_id: uuid.UUID,
+    planning_window: TimeInterval,
+    busy_intervals: tuple[TimeInterval, ...],
+    task: SchedulingTask,
+) -> SchedulePreview:
+    """Preview one temporary task with persisted reservations included."""
+    if session.get(User, user_id) is None:
+        raise PreviewUserNotFoundError
+    return _preview_with_reservations(
+        session=session,
+        user_id=user_id,
+        planning_window=planning_window.as_utc(),
+        busy_intervals=busy_intervals,
+        tasks=(task,),
+    )
+
+
+def _preview_with_reservations(
+    *,
+    session: Session,
+    user_id: uuid.UUID,
+    planning_window: TimeInterval,
+    busy_intervals: tuple[TimeInterval, ...],
+    tasks: tuple[SchedulingTask, ...],
+) -> SchedulePreview:
     stored_preferences = load_scheduling_preferences(session, user_id)
     reserved_intervals = list_reserved_intervals(
         session,
         user_id=user_id,
-        start=planning.start,
-        end=planning.end,
+        start=planning_window.start,
+        end=planning_window.end,
     )
     combined_busy_intervals = busy_intervals + tuple(
         TimeInterval(item.start, item.end) for item in reserved_intervals
     )
     return generate_schedule_preview(
-        planning_window=planning,
+        planning_window=planning_window,
         busy_intervals=combined_busy_intervals,
-        tasks=tuple(_to_scheduling_task(task) for task in tasks),
+        tasks=tasks,
         preferences=stored_preferences,
     )
 
@@ -103,10 +139,14 @@ def _load_preview_tasks(
     return list(session.scalars(statement))
 
 
-def _to_scheduling_task(task: Task) -> SchedulingTask:
+def scheduling_task_from_model(
+    task: Task, *, duration_minutes: int | None = None
+) -> SchedulingTask:
     return SchedulingTask(
         id=str(task.id),
-        duration_minutes=task.duration_minutes,
+        duration_minutes=(
+            task.duration_minutes if duration_minutes is None else duration_minutes
+        ),
         priority=task.priority,
         earliest_start=task.earliest_start,
         deadline=task.deadline,

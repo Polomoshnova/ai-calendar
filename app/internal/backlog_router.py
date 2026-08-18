@@ -23,19 +23,24 @@ from app.backlog.schemas import (
     BacklogEntryCreateRequest,
     BacklogEntryResponse,
     BacklogNoteRequest,
+    BacklogSchedulePreviewRequest,
+    BacklogSchedulePreviewResponse,
 )
 from app.backlog.service import (
     BacklogEntryAlreadyExistsError,
     BacklogEntryNotFoundError,
     BacklogOwnershipError,
+    BacklogPreviewNotAllowedError,
     cancel_backlog_entry,
     create_backlog_entry,
     defer_backlog_entry,
+    preview_backlog_entry_schedule,
     reactivate_backlog_entry,
     resolve_backlog_entry,
 )
 from app.internal.dependencies import InternalToolsEnabled
 from app.models import Task, User
+from app.schemas.scheduling import SchedulePreviewResponse
 
 router = APIRouter(prefix="/internal/api/backlog", tags=["internal-backlog"])
 
@@ -47,7 +52,14 @@ def _response(entry: object) -> BacklogEntryResponse:
 def _http_error(exc: BacklogDomainError) -> HTTPException:
     if isinstance(exc, (BacklogEntryNotFoundError, BacklogOwnershipError)):
         return HTTPException(status_code=404, detail=str(exc))
-    if isinstance(exc, (BacklogEntryAlreadyExistsError, InvalidBacklogTransitionError)):
+    if isinstance(
+        exc,
+        (
+            BacklogEntryAlreadyExistsError,
+            BacklogPreviewNotAllowedError,
+            InvalidBacklogTransitionError,
+        ),
+    ):
         return HTTPException(status_code=409, detail=str(exc))
     return HTTPException(status_code=422, detail=str(exc))
 
@@ -238,3 +250,50 @@ def cancel_entry(
     except BacklogDomainError as exc:
         raise _http_error(exc) from exc
     return _response(entry)
+
+
+@router.post(
+    "/{entry_id}/schedule-preview",
+    response_model=BacklogSchedulePreviewResponse,
+    summary="Preview backlog entry scheduling",
+    description=(
+        "Explicitly retries deterministic scheduling for one active or deferred "
+        "entry using its current unscheduled duration. Includes request busy "
+        "intervals and reserving SchedulePlan intervals. Persists attempt metadata "
+        "only; it never creates a plan, writes Google Calendar, or changes backlog "
+        "status."
+    ),
+)
+def schedule_preview_entry(
+    entry_id: uuid.UUID,
+    user_id: uuid.UUID,
+    data: BacklogSchedulePreviewRequest,
+    session: DatabaseSession,
+    _enabled: InternalToolsEnabled,
+) -> BacklogSchedulePreviewResponse:
+    try:
+        result = preview_backlog_entry_schedule(
+            session,
+            entry_id=entry_id,
+            user_id=user_id,
+            planning_window=data.planning_window.to_domain(),
+            busy_intervals=tuple(item.to_domain() for item in data.busy_intervals),
+        )
+    except BacklogDomainError as exc:
+        raise _http_error(exc) from exc
+    preview = SchedulePreviewResponse.from_domain(
+        result.preview.planning_window,
+        result.preview.free_intervals,
+        result.preview.result,
+    )
+    unscheduled_reason = (
+        preview.unscheduled_tasks[0].reason_code if preview.unscheduled_tasks else None
+    )
+    return BacklogSchedulePreviewResponse(
+        backlog_entry_id=result.entry.id,
+        task_id=result.entry.task_id,
+        remaining_duration_minutes=result.remaining_duration_minutes,
+        scheduling_attempt_count=result.entry.scheduling_attempt_count,
+        schedule_preview=preview,
+        unscheduled_reason=unscheduled_reason,
+    )
