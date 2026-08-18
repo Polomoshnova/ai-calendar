@@ -38,12 +38,15 @@ Temporary calendar failures remain integration errors, and partial-work
 accounting reuses the Calendar Engine reservation policy. The internal
 [Backlog API](../backlog.md) now exposes listing, creation, and explicit
 lifecycle operations. Neither the domain nor API invokes scheduling
-automatically.
+automatically. Explicit retry scheduling preview is now implemented for active
+and deferred entries, using current partial-work accounting, request busy
+intervals, and shared SchedulePlan reservations. It records attempt metadata
+without creating a plan, writing a calendar, or transitioning backlog state.
 
 Next scope, in dependency order:
 
 1. Task lifecycle refinement.
-2. Manual retry and replanning actions.
+2. SchedulePlan creation from an explicitly accepted backlog preview.
 3. Planner-oriented read models.
 
 ## Epic 3 — User Interface

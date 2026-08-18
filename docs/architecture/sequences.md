@@ -32,6 +32,32 @@ pending Tasks and effective preferences from PostgreSQL, combines them with
 temporary request busy intervals and the user's reserved SchedulePlan
 intervals, and calls the same deterministic scheduling orchestration.
 
+## Backlog retry scheduling preview
+
+This is an explicit, user-triggered preview for one active or deferred entry.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant API as Backlog API
+    participant Backlog as Backlog service
+    participant Reserve as Reservation policy
+    participant Scheduler as Deterministic preview service
+    database DB as PostgreSQL
+
+    User->>API: POST /backlog/{id}/schedule-preview
+    API->>Backlog: Entry, user, window, busy intervals
+    Backlog->>DB: Lock owned entry; load Task and sessions
+    Backlog->>Reserve: Calculate remaining duration and reserved intervals
+    Reserve-->>Backlog: Remaining minutes and half-open reservations
+    Backlog->>Scheduler: Temporary Task with remaining duration
+    Scheduler-->>Backlog: Scheduled or unscheduled preview
+    Backlog->>DB: Increment attempt count and timestamp only
+    Backlog-->>User: Preview plus backlog metadata
+    Note over Backlog,DB: No SchedulePlan, status transition, or background retry
+    Note over API,Scheduler: No Google read or write in the existing preview flow
+```
+
 ## SchedulePlan creation and confirmation
 
 This flow is implemented through separate internal endpoints.

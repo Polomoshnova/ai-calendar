@@ -2,8 +2,9 @@
 
 The internal Backlog API exposes explicit Planner backlog operations while
 preserving the domain boundary. All routes require internal tools to be enabled.
-They do not invoke scheduling, contact a calendar provider, or create backlog
-entries automatically.
+Scheduling runs only when the user explicitly requests a preview. The API does
+not contact a calendar provider, persist a SchedulePlan, write Google Calendar,
+or create, resolve, or transition backlog entries automatically.
 
 ## Endpoints
 
@@ -22,6 +23,22 @@ entries automatically.
   backlog condition.
 - `POST /internal/api/backlog/{entry_id}/cancel?user_id=...` explicitly stops
   backlog tracking.
+- `POST /internal/api/backlog/{entry_id}/schedule-preview?user_id=...` creates a
+  fresh deterministic preview for one owned active or deferred entry. The body
+  contains `planning_window` and optional `busy_intervals`.
+
+The scheduling preview recalculates current unscheduled duration from the
+Task's full duration and sessions in reserving SchedulePlans. It schedules only
+that remainder, combines request busy intervals with the shared reservation
+query, and returns the normal preview plus backlog and attempt metadata. If no
+slot is available, the response remains successful and includes
+`unscheduled_reason`. The existing preview flow does not query Google FreeBusy,
+so this endpoint accepts already-normalized busy intervals instead.
+
+Each accepted preview request updates `last_scheduling_attempt_at` and
+increments `scheduling_attempt_count`, including valid unscheduled outcomes.
+Invalid context and ineligible entry or Task states do not record an attempt.
+Repeated calls are explicit fresh previews; there is no background retry.
 
 List ordering is deterministic: review time first, followed by `entered_at`
 and entry ID. Ownership failures return 404, conflicting open entries and
@@ -34,4 +51,5 @@ reason; temporary provider failures remain integration errors. `reason=other`
 requires a meaningful note.
 
 The generated OpenAPI document includes typed request and response schemas,
-operation summaries, boundary descriptions, and creation/defer examples.
+operation summaries, boundary descriptions, and creation, defer, and scheduling
+preview examples.
