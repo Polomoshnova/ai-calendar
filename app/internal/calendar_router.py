@@ -352,6 +352,7 @@ async def calendar_preview(
         )
         return CalendarPreviewResponse(
             calendar_context=CalendarQuerySummary(
+                connection_id=connection.id,
                 provider="google",
                 calendar_ids=calendar_ids,
                 provider_busy_interval_count=len(result.intervals),

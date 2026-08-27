@@ -20,6 +20,7 @@ from app.core.config import get_settings
 from app.domain.tasks import TaskStatus
 from app.models import (
     CalendarConnection,
+    CalendarConnectionStatus,
     CalendarSelection,
     SchedulePlan,
     Task,
@@ -31,6 +32,7 @@ from app.schedule_plans.service import confirm_schedule_plan
 
 WINDOW_START = datetime(2026, 8, 18, 8, tzinfo=UTC)
 WINDOW_END = datetime(2026, 8, 18, 18, tzinfo=UTC)
+CONNECTION_ID = uuid.UUID("44444444-4444-4444-4444-444444444444")
 
 
 @pytest.fixture(autouse=True)
@@ -96,6 +98,7 @@ def make_entry(
 
 def ensure_calendar_context(session: Session, user: User) -> None:
     connection = CalendarConnection(
+        id=CONNECTION_ID,
         user_id=user.id,
         provider=CalendarProviderName.google,
         provider_account_id=f"account-{user.id}",
@@ -117,6 +120,7 @@ def request_preview(client: TestClient, entry_id: uuid.UUID, user_id: uuid.UUID)
         f"/internal/api/backlog/{entry_id}/schedule-preview",
         params={"user_id": str(user_id)},
         json={
+            "connection_id": str(CONNECTION_ID),
             "planning_window": {
                 "start": WINDOW_START.isoformat(),
                 "end": WINDOW_END.isoformat(),
@@ -146,6 +150,7 @@ def plan_payload(
 ) -> dict[str, Any]:
     preview = preview_override or selected_preview(preview_result, minutes=minutes)
     return {
+        "connection_id": preview_result["connection_id"],
         "scheduling_attempt_count": preview_result["scheduling_attempt_count"],
         "schedule_preview": preview,
         "planning_context": {
@@ -154,6 +159,7 @@ def plan_payload(
             "planning_window_end": WINDOW_END.isoformat(),
             "scheduler_version": preview["scheduler_version"],
             "calendar_context": {
+                "connection_id": str(CONNECTION_ID),
                 "provider": "google",
                 "calendar_ids": ["primary"],
                 "provider_busy_interval_count": 0,
@@ -203,6 +209,61 @@ def test_active_or_deferred_backlog_creates_proposed_plan_with_provenance(
     db_session.refresh(entry)
     assert entry.status is entry_status
     assert entry.remaining_duration_minutes == 240
+
+
+def test_backlog_plan_uses_explicit_active_connection_not_older_expired_one(
+    client: TestClient,
+    db_session: Session,
+    user: User,
+) -> None:
+    task = make_task(db_session, user)
+    entry = make_entry(db_session, user, task)
+    expired = CalendarConnection(
+        user_id=user.id,
+        provider=CalendarProviderName.google,
+        provider_account_id="older-expired-account",
+        status=CalendarConnectionStatus.expired,
+    )
+    expired.selections.append(
+        CalendarSelection(
+            external_calendar_id="primary",
+            display_name="Expired primary",
+            primary=True,
+            include_in_availability=True,
+        )
+    )
+    db_session.add(expired)
+    db_session.commit()
+    ensure_calendar_context(db_session, user)
+    preview = request_preview(client, entry.id, user.id)
+    mismatched_payload = plan_payload(preview, minutes=120)
+    mismatched_payload["connection_id"] = str(expired.id)
+
+    mismatched = create_plan(client, entry.id, user.id, mismatched_payload)
+
+    response = create_plan(
+        client, entry.id, user.id, plan_payload(preview, minutes=120)
+    )
+
+    assert mismatched.status_code == 422
+    assert mismatched.json()["detail"] == (
+        "selected preview connection must match planning calendar context"
+    )
+    assert response.status_code == 201, response.text
+    plan = db_session.get(SchedulePlan, uuid.UUID(response.json()["id"]))
+    assert plan is not None
+    assert plan.busy_sources_snapshot is not None
+    assert plan.write_targets_snapshot is not None
+    assert {item["connection_id"] for item in plan.busy_sources_snapshot} == {
+        str(CONNECTION_ID)
+    }
+    assert {item["connection_id"] for item in plan.write_targets_snapshot} == {
+        str(CONNECTION_ID)
+    }
+    assert str(expired.id) not in str(plan.busy_sources_snapshot)
+    db_session.refresh(entry)
+    assert entry.status is BacklogStatus.active
+    assert entry.remaining_duration_minutes == task.duration_minutes
 
 
 def test_same_preview_is_idempotent_but_fresh_preview_creates_new_plan(

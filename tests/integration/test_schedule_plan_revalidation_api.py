@@ -199,6 +199,10 @@ def create_confirmed_plan(
 ) -> SchedulePlan:
     start = start or dt(10)
     end = end or dt(11)
+    connection = db_session.scalar(
+        select(CalendarConnection).where(CalendarConnection.user_id == user.id)
+    )
+    assert connection is not None
     plan = create_schedule_plan_from_preview(
         db_session,
         user_id=user.id,
@@ -212,6 +216,7 @@ def create_confirmed_plan(
             scheduler_version="2a.1",
             workflow_version="task-to-schedule-preview.v1",
             calendar_context={
+                "connection_id": connection.id,
                 "provider": "google",
                 "calendar_ids": calendar_ids or ["primary", "team"],
                 "provider_busy_interval_count": 0,

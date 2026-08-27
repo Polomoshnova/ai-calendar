@@ -17,6 +17,7 @@ from app.calendar_sync import (
 from app.core.config import get_settings
 from app.models import (
     CalendarConnection,
+    CalendarConnectionStatus,
     CalendarProviderName,
     CalendarSelection,
     User,
@@ -34,9 +35,13 @@ def dt(hour: int, minute: int = 0) -> datetime:
     return datetime(2026, 7, 27, hour, minute, tzinfo=UTC)
 
 
+PLAN_CONNECTION_ID = uuid.UUID("33333333-3333-3333-3333-333333333333")
+
+
 def plan_payload(
     user_id: uuid.UUID,
     *,
+    connection_id: uuid.UUID = PLAN_CONNECTION_ID,
     idempotency_key: str = "schedule-plan-test-1",
     plan_group_id: str | None = None,
     block_start: datetime | None = None,
@@ -97,6 +102,7 @@ def plan_payload(
             "scheduler_version": "2a.1",
             "workflow_version": "task-to-schedule-preview.v1",
             "calendar_context": {
+                "connection_id": str(connection_id),
                 "provider": "google",
                 "calendar_ids": ["primary"],
                 "provider_busy_interval_count": 4,
@@ -216,6 +222,192 @@ def test_create_plan_persists_sessions_and_safe_snapshots(
         busy_sources=busy_sources,
         write_targets=write_targets,
     )
+
+
+def add_calendar_connection(
+    db_session: Session,
+    *,
+    user_id: uuid.UUID,
+    account: str,
+    status: CalendarConnectionStatus = CalendarConnectionStatus.active,
+    calendar_id: str = "primary",
+) -> CalendarConnection:
+    connection = CalendarConnection(
+        user_id=user_id,
+        provider=CalendarProviderName.google,
+        provider_account_id=account,
+        status=status,
+    )
+    connection.selections.append(
+        CalendarSelection(
+            external_calendar_id=calendar_id,
+            display_name=f"Calendar {account}",
+            primary=True,
+            include_in_availability=True,
+        )
+    )
+    db_session.add(connection)
+    db_session.commit()
+    db_session.refresh(connection)
+    return connection
+
+
+@pytest.mark.parametrize("active_first", [False, True])
+def test_explicit_active_connection_controls_snapshots_regardless_of_order(
+    client: TestClient,
+    db_session: Session,
+    user: User,
+    active_first: bool,
+) -> None:
+    def add_active() -> CalendarConnection:
+        return add_calendar_connection(
+            db_session, user_id=user.id, account="active-account"
+        )
+
+    def add_expired() -> CalendarConnection:
+        return add_calendar_connection(
+            db_session,
+            user_id=user.id,
+            account="expired-account",
+            status=CalendarConnectionStatus.expired,
+        )
+
+    if active_first:
+        active, expired = add_active(), add_expired()
+    else:
+        expired, active = add_expired(), add_active()
+
+    response = client.post(
+        "/internal/api/schedule-plans/from-preview",
+        json=plan_payload(
+            user.id,
+            connection_id=active.id,
+            idempotency_key=f"explicit-active-{active_first}",
+        ),
+    )
+
+    assert response.status_code == 201, response.text
+    plan = db_session.get(SchedulePlan, uuid.UUID(response.json()["id"]))
+    assert plan is not None
+    assert plan.busy_sources_snapshot is not None
+    assert plan.write_targets_snapshot is not None
+    assert {item["connection_id"] for item in plan.busy_sources_snapshot} == {
+        str(active.id)
+    }
+    assert {item["connection_id"] for item in plan.write_targets_snapshot} == {
+        str(active.id)
+    }
+    assert str(expired.id) not in str(plan.busy_sources_snapshot)
+    busy_sources = [
+        BusySourceSnapshot.model_validate(item) for item in plan.busy_sources_snapshot
+    ]
+    write_targets = [
+        SessionWriteTargetSnapshot.model_validate(item)
+        for item in plan.write_targets_snapshot
+    ]
+    assert {item.calendar_id for item in busy_sources} == {"primary"}
+    assert {item.calendar_id for item in write_targets} == {"primary"}
+    assert plan.calendar_selection_hash == calendar_context_hash(
+        busy_sources=busy_sources, write_targets=write_targets
+    )
+
+
+def test_inactive_or_cross_user_connection_is_rejected_without_fallback(
+    client: TestClient,
+    db_session: Session,
+    user: User,
+) -> None:
+    add_calendar_connection(db_session, user_id=user.id, account="active-fallback")
+    expired = add_calendar_connection(
+        db_session,
+        user_id=user.id,
+        account="expired-explicit",
+        status=CalendarConnectionStatus.expired,
+    )
+    other = User(email="calendar-owner@example.com", timezone="UTC")
+    db_session.add(other)
+    db_session.commit()
+    foreign = add_calendar_connection(
+        db_session, user_id=other.id, account="foreign-account"
+    )
+
+    expired_response = client.post(
+        "/internal/api/schedule-plans/from-preview",
+        json=plan_payload(
+            user.id,
+            connection_id=expired.id,
+            idempotency_key="expired-explicit",
+        ),
+    )
+    foreign_response = client.post(
+        "/internal/api/schedule-plans/from-preview",
+        json=plan_payload(
+            user.id,
+            connection_id=foreign.id,
+            idempotency_key="foreign-explicit",
+        ),
+    )
+    missing_response = client.post(
+        "/internal/api/schedule-plans/from-preview",
+        json=plan_payload(
+            user.id,
+            connection_id=uuid.uuid4(),
+            idempotency_key="missing-explicit",
+        ),
+    )
+
+    assert expired_response.status_code == 422
+    assert expired_response.json()["detail"] == (
+        "calendar context connection must be active"
+    )
+    assert foreign_response.status_code == 422
+    assert foreign_response.json()["detail"] == (
+        "calendar context connection must belong to the schedule plan user"
+    )
+    assert missing_response.status_code == 422
+    assert missing_response.json()["detail"] == (
+        "calendar context connection does not exist"
+    )
+    assert db_session.scalar(select(func.count()).select_from(SchedulePlan)) == 0
+
+
+def test_two_active_connections_use_explicit_preview_provenance(
+    client: TestClient,
+    db_session: Session,
+    user: User,
+) -> None:
+    first = add_calendar_connection(db_session, user_id=user.id, account="first-active")
+    second = add_calendar_connection(
+        db_session, user_id=user.id, account="second-active"
+    )
+    ambiguous_payload = plan_payload(
+        user.id,
+        connection_id=second.id,
+        idempotency_key="missing-explicit-connection",
+    )
+    del ambiguous_payload["planning_context"]["calendar_context"]["connection_id"]
+
+    ambiguous = client.post(
+        "/internal/api/schedule-plans/from-preview", json=ambiguous_payload
+    )
+
+    response = client.post(
+        "/internal/api/schedule-plans/from-preview",
+        json=plan_payload(
+            user.id,
+            connection_id=second.id,
+            idempotency_key="second-active-explicit",
+        ),
+    )
+
+    assert ambiguous.status_code == 422
+    assert response.status_code == 201, response.text
+    plan = db_session.get(SchedulePlan, uuid.UUID(response.json()["id"]))
+    assert plan is not None and plan.busy_sources_snapshot is not None
+    assert {item["connection_id"] for item in plan.busy_sources_snapshot} == {
+        str(second.id)
+    }
+    assert str(first.id) not in str(plan.busy_sources_snapshot)
 
 
 def test_legacy_plan_with_null_calendar_snapshots_does_not_crash(

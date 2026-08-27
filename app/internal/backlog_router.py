@@ -297,6 +297,7 @@ def schedule_preview_entry(
     return BacklogSchedulePreviewResponse(
         backlog_entry_id=result.entry.id,
         task_id=result.entry.task_id,
+        connection_id=data.connection_id,
         remaining_duration_minutes=result.remaining_duration_minutes,
         scheduling_attempt_count=result.entry.scheduling_attempt_count,
         schedule_preview=preview,
@@ -328,6 +329,7 @@ def create_schedule_plan_entry(
             session,
             entry_id=entry_id,
             user_id=user_id,
+            preview_connection_id=data.connection_id,
             scheduling_attempt_count=data.scheduling_attempt_count,
             schedule_preview=data.schedule_preview,
             planning_context=data.planning_context,
