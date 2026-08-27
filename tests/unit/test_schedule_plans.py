@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.models.calendar import (
     CalendarConnection,
+    CalendarConnectionStatus,
     CalendarProviderName,
     CalendarSelection,
 )
@@ -194,8 +195,15 @@ def test_concurrent_duplicate_create_returns_existing_plan(
     session.get.return_value = Mock()
     connection = Mock(spec=CalendarConnection)
     connection.id = uuid.uuid4()
+    connection.user_id = user_id
     connection.provider = CalendarProviderName.google
     connection.provider_account_id = "account-1"
+    connection.status = CalendarConnectionStatus.active
+    session.get.side_effect = lambda model, identifier: (
+        connection
+        if model is CalendarConnection and identifier == connection.id
+        else Mock()
+    )
     session.scalar.return_value = connection
     selection = Mock(spec=CalendarSelection)
     selection.external_calendar_id = "primary"
@@ -220,6 +228,7 @@ def test_concurrent_duplicate_create_returns_existing_plan(
         schedule_preview=preview([(dt(8), dt(9))]),
         planning_context=context(
             calendar_context={
+                "connection_id": connection.id,
                 "provider": "google",
                 "calendar_ids": ["primary"],
                 "provider_busy_interval_count": 0,

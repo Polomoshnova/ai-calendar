@@ -100,6 +100,7 @@ class BacklogSchedulePreviewRequest(BacklogRequest):
         json_schema_extra={
             "examples": [
                 {
+                    "connection_id": "33333333-3333-3333-3333-333333333333",
                     "planning_window": {
                         "start": "2026-08-18T08:00:00Z",
                         "end": "2026-08-19T18:00:00Z",
@@ -115,6 +116,7 @@ class BacklogSchedulePreviewRequest(BacklogRequest):
         },
     )
 
+    connection_id: uuid.UUID
     planning_window: DateTimeInterval
     busy_intervals: list[DateTimeInterval] = Field(default_factory=list)
 
@@ -131,6 +133,7 @@ class BacklogSchedulePreviewRequest(BacklogRequest):
 class BacklogSchedulePreviewResponse(BaseModel):
     backlog_entry_id: uuid.UUID
     task_id: uuid.UUID
+    connection_id: uuid.UUID
     remaining_duration_minutes: int
     scheduling_attempt_count: int
     schedule_preview: SchedulePreviewResponse
@@ -143,6 +146,7 @@ class BacklogSchedulePlanCreateRequest(BacklogRequest):
         json_schema_extra={
             "examples": [
                 {
+                    "connection_id": "33333333-3333-3333-3333-333333333333",
                     "scheduling_attempt_count": 2,
                     "schedule_preview": {
                         "scheduler_version": "2a.1",
@@ -169,6 +173,7 @@ class BacklogSchedulePlanCreateRequest(BacklogRequest):
                         "planning_window_end": "2026-08-18T18:00:00Z",
                         "scheduler_version": "2a.1",
                         "calendar_context": {
+                            "connection_id": ("33333333-3333-3333-3333-333333333333"),
                             "provider": "google",
                             "calendar_ids": ["primary"],
                             "provider_busy_interval_count": 2,
@@ -181,6 +186,7 @@ class BacklogSchedulePlanCreateRequest(BacklogRequest):
         },
     )
 
+    connection_id: uuid.UUID
     scheduling_attempt_count: int = Field(ge=1)
     schedule_preview: SchedulePreviewResponse
     planning_context: SchedulePlanContext

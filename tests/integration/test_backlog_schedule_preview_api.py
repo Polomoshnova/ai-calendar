@@ -26,6 +26,7 @@ from app.schedule_plans.models import (
 
 WINDOW_START = datetime(2026, 8, 18, 8, tzinfo=UTC)
 WINDOW_END = datetime(2026, 8, 18, 18, tzinfo=UTC)
+CONNECTION_ID = uuid.UUID("55555555-5555-5555-5555-555555555555")
 
 
 @pytest.fixture(autouse=True)
@@ -92,6 +93,7 @@ def make_entry(
 
 def request_payload(**overrides: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {
+        "connection_id": str(CONNECTION_ID),
         "planning_window": {
             "start": WINDOW_START.isoformat(),
             "end": WINDOW_END.isoformat(),

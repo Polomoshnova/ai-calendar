@@ -351,6 +351,7 @@ def create_backlog_schedule_plan(
     *,
     entry_id: uuid.UUID,
     user_id: uuid.UUID,
+    preview_connection_id: uuid.UUID,
     scheduling_attempt_count: int,
     schedule_preview: SchedulePreviewResponse,
     planning_context: SchedulePlanContext,
@@ -370,6 +371,14 @@ def create_backlog_schedule_plan(
     if entry.scheduling_attempt_count != scheduling_attempt_count:
         raise BacklogPreviewNotAllowedError(
             "selected scheduling preview is stale; request a fresh preview"
+        )
+    calendar_context = planning_context.calendar_context
+    if (
+        calendar_context is None
+        or calendar_context.connection_id != preview_connection_id
+    ):
+        raise BacklogDomainError(
+            "selected preview connection must match planning calendar context"
         )
     remaining = calculate_remaining_unscheduled_duration(
         task.duration_minutes,

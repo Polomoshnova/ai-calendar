@@ -46,6 +46,7 @@ def _contains_secret_key(value: object) -> bool:
 
 
 class CalendarContextSnapshot(StrictModel):
+    connection_id: uuid.UUID
     provider: str = Field(min_length=1, max_length=50)
     calendar_ids: list[str] = Field(default_factory=list)
     provider_busy_interval_count: int = Field(ge=0)

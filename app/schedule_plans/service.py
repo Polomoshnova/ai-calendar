@@ -25,6 +25,7 @@ from app.calendar_sync.snapshots import (
 from app.models.backlog import BacklogEntry
 from app.models.calendar import (
     CalendarConnection,
+    CalendarConnectionStatus,
     CalendarProviderName,
     CalendarSelection,
 )
@@ -236,17 +237,19 @@ def _calendar_snapshots(
         raise SchedulePlanValidationError(
             "calendar context provider is not supported"
         ) from exc
-    connection = session.scalar(
-        select(CalendarConnection).where(
-            CalendarConnection.user_id == user_id,
-            CalendarConnection.provider == provider,
-        )
-    )
+    connection = session.get(CalendarConnection, calendar_context.connection_id)
     if connection is None:
+        raise SchedulePlanValidationError("calendar context connection does not exist")
+    if connection.user_id != user_id:
         raise SchedulePlanValidationError(
-            "calendar context connection must exist and belong to the "
-            "schedule plan user"
+            "calendar context connection must belong to the schedule plan user"
         )
+    if connection.provider is not provider:
+        raise SchedulePlanValidationError(
+            "calendar context provider does not match its connection"
+        )
+    if connection.status is not CalendarConnectionStatus.active:
+        raise SchedulePlanValidationError("calendar context connection must be active")
     calendar_ids = list(dict.fromkeys(calendar_context.calendar_ids))
     if not calendar_ids:
         raise SchedulePlanValidationError(

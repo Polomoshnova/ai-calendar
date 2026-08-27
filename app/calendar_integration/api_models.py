@@ -119,6 +119,7 @@ class CalendarPreviewRequest(StrictModel):
 
 
 class CalendarQuerySummary(StrictModel):
+    connection_id: uuid.UUID
     provider: Literal["google"]
     calendar_ids: list[str]
     provider_busy_interval_count: int
