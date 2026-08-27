@@ -8,6 +8,7 @@ from app.internal.backlog_router import router as backlog_router
 from app.internal.calendar_router import router as calendar_router
 from app.internal.calendar_sync_router import router as calendar_sync_router
 from app.internal.dev_users_router import router as dev_users_router
+from app.internal.planner_router import router as planner_router
 from app.internal.router import router as internal_router
 from app.internal.schedule_plans_router import router as schedule_plans_router
 from app.internal.task_confirmation_router import router as task_confirmation_router
@@ -27,6 +28,7 @@ app.include_router(calendar_router)
 app.include_router(calendar_sync_router)
 app.include_router(dev_users_router)
 app.include_router(schedule_plans_router)
+app.include_router(planner_router)
 
 
 @app.get("/")

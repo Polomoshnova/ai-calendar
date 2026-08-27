@@ -46,10 +46,15 @@ Explicit selected-preview persistence and confirmation are now connected:
 proposed plans carry nullable backlog provenance, and successful confirmation
 atomically recalculates partial or fully resolved backlog work.
 
+The first Planner-oriented read model is implemented at
+`GET /internal/api/planner`. It composes current sessions, actionable backlog,
+pending plans, and persisted attention states without invoking scheduling,
+calendar providers, synchronization, or lifecycle transitions.
+
 Next scope, in dependency order:
 
 1. Task lifecycle refinement.
-2. Planner-oriented read models.
+2. Additional Planner projections only when required by the first UI.
 
 ## Epic 3 — User Interface
 
