@@ -74,6 +74,12 @@ event.
 - `ENABLE_INTERNAL_TOOLS` gates internal behavior. There is no production
   authentication layer yet.
 
+The internal Planner read model is exposed at `GET /internal/api/planner`. It
+projects the user's current ScheduledSessions, actionable backlog, pending
+plans, and persisted attention conditions for a future UI. It is a read-only
+projection rather than a new aggregate; existing domain entities remain the
+sources of truth. See [Planner read model](../planner-read-model.md).
+
 Routes validate transport schemas, translate known application errors to HTTP
 responses, and delegate decisions to services. Scheduling rules do not belong
 in routers.
