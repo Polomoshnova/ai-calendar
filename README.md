@@ -168,6 +168,12 @@ ENABLE_INTERNAL_TOOLS=true \
 Then open <http://127.0.0.1:8000/internal/scheduling-lab>. Internal tooling has
 no production authentication and must not be exposed publicly.
 
+The first read-only Planner UI is available at
+<http://127.0.0.1:8000/internal/planner>. It reuses the internal development
+user selector and renders `GET /internal/api/planner` with the default 14-day
+horizon. See [Planner UI](docs/planner-ui.md) for its architecture and current
+scope.
+
 ### Quality checks
 
 Create and migrate the dedicated test database once:
@@ -228,3 +234,5 @@ docker compose down
 - [SchedulePlan revalidation](docs/schedule-plan-revalidation.md)
 - [Google Calendar read-only integration](docs/google-calendar-readonly.md)
 - [Internal development users](docs/internal-dev-users.md)
+- [Planner read model](docs/planner-read-model.md)
+- [Planner UI](docs/planner-ui.md)

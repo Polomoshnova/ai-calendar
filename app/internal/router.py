@@ -56,9 +56,25 @@ def scheduling_lab(request: Request, _enabled: InternalToolsEnabled) -> object:
     )
 
 
+@router.get("/planner")
+def planner(request: Request, _enabled: InternalToolsEnabled) -> object:
+    return templates.TemplateResponse(
+        request=request,
+        name="planner.html",
+        context={"title": "Planner"},
+    )
+
+
 @router.get("/static/{filename}")
 def internal_static(filename: str, _enabled: InternalToolsEnabled) -> FileResponse:
-    if filename not in {"scheduling_lab.css", "scheduling_lab.js"}:
+    if filename not in {
+        "planner.css",
+        "planner.js",
+        "planner_api.js",
+        "planner_view.js",
+        "scheduling_lab.css",
+        "scheduling_lab.js",
+    }:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     return FileResponse(APP_DIRECTORY / "static" / filename)
 
