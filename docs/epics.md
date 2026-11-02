@@ -44,13 +44,18 @@ decisions](architecture/product-decisions.md).
 
 ## Epic 3 — User Interface
 
-Status: Planned
+Status: In progress
 
 Purpose: provide the end-to-end user workflow for task input, review,
 scheduling, backlog, calendar application, and synchronization states.
 
-See the [system overview](architecture/system-overview.md) and [product
-architecture](product-architecture.md).
+The initial foundation is a read-only internal Planner screen over the Planner
+API. It establishes the frontend/API boundary, development-user selection, and
+loading, error, empty, and section rendering states without product mutations.
+Later PRs will add the workflows listed above incrementally.
+
+See the [Planner UI](planner-ui.md), [system overview](architecture/system-overview.md),
+and [product architecture](product-architecture.md).
 
 ## Epic 4 — Production Readiness
 

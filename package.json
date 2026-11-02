@@ -1,0 +1,11 @@
+{
+  "name": "ai-calendar-internal-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/ui/*.test.js",
+    "lint": "node --check app/static/planner_api.js && node --check app/static/planner_view.js && node --check app/static/planner.js",
+    "typecheck": "node --check app/static/planner_api.js && node --check app/static/planner_view.js && node --check app/static/planner.js",
+    "build": "node --check app/static/planner_api.js && node --check app/static/planner_view.js && node --check app/static/planner.js"
+  }
+}

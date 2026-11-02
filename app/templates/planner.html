@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="/internal/static/planner.css">
+  </head>
+  <body>
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">Development-only · read-only</p>
+        <h1>Planner</h1>
+        <p class="subtitle">A current view of scheduled work, backlog, and plans that need review.</p>
+      </div>
+      <div class="controls">
+        <label for="user-select">User</label>
+        <select id="user-select" disabled>
+          <option>Loading users…</option>
+        </select>
+        <p id="horizon" class="hint">Upcoming horizon: 14 days</p>
+      </div>
+    </header>
+
+    <main>
+      <div id="planner-status" class="status" role="status" aria-live="polite">
+        <span class="spinner" aria-hidden="true"></span>
+        Loading Planner…
+      </div>
+      <div id="planner-content" hidden></div>
+    </main>
+
+    <script type="module" src="/internal/static/planner.js"></script>
+  </body>
+</html>

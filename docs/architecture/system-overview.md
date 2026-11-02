@@ -84,6 +84,11 @@ Routes validate transport schemas, translate known application errors to HTTP
 responses, and delegate decisions to services. Scheduling rules do not belong
 in routers.
 
+The development-only Planner page at `GET /internal/planner` is a Jinja shell
+with static vanilla JavaScript. Its API client calls the Planner read endpoint;
+the UI has no persistence, scheduler, or provider access and contains no domain
+mutation controls. See [Planner UI](../planner-ui.md).
+
 ### AI Intake
 
 `app/ai_intake/` owns prompt selection, the provider gateway, strict structured
