@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Self
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -88,6 +88,8 @@ class ExternalCalendarEvent(StrictModel):
     status: str | None = None
     etag: str | None = None
     provider_updated_at: datetime | None = None
+    recurring_event_id: str | None = None
+    original_start_time: datetime | date | None = None
 
     @model_validator(mode="after")
     def validate_event(self) -> Self:

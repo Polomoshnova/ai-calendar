@@ -65,6 +65,21 @@ def _event_interval(
     raise KeyError("event boundaries")
 
 
+def _original_start_time(
+    payload: dict[str, Any], zone: ZoneInfo
+) -> datetime | date | None:
+    value = payload.get("originalStartTime")
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise TypeError("originalStartTime must be an object")
+    if value.get("dateTime") is not None:
+        return datetime.fromisoformat(str(value["dateTime"]))
+    if value.get("date") is not None:
+        return date.fromisoformat(str(value["date"]))
+    raise KeyError("originalStartTime")
+
+
 class GoogleCalendarProvider:
     def __init__(self, client: httpx.AsyncClient) -> None:
         self._client = client
@@ -393,6 +408,12 @@ class GoogleCalendarProvider:
                             status=status,
                             etag=str(item["etag"]) if item.get("etag") else None,
                             provider_updated_at=updated,
+                            recurring_event_id=(
+                                str(item["recurringEventId"])
+                                if item.get("recurringEventId")
+                                else None
+                            ),
+                            original_start_time=_original_start_time(item, zone),
                         )
                     )
                 except (KeyError, TypeError, ValueError, ValidationError) as exc:

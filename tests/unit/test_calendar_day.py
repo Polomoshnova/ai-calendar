@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import httpx
 
@@ -42,6 +42,10 @@ def test_google_event_list_paginates_and_maps_timed_all_day_and_cancelled() -> N
                             "id": "timed",
                             "summary": "Repeated hour",
                             "status": "confirmed",
+                            "recurringEventId": "recurring-master",
+                            "originalStartTime": {
+                                "dateTime": "2026-10-25T02:30:00+02:00"
+                            },
                             "start": {"dateTime": "2026-10-25T02:30:00+02:00"},
                             "end": {"dateTime": "2026-10-25T02:45:00+02:00"},
                             "etag": '"v1"',
@@ -50,6 +54,10 @@ def test_google_event_list_paginates_and_maps_timed_all_day_and_cancelled() -> N
                         {
                             "id": "cancelled",
                             "status": "cancelled",
+                            "recurringEventId": "recurring-master",
+                            "originalStartTime": {
+                                "dateTime": "2026-10-25T02:30:00+01:00"
+                            },
                         },
                     ],
                     "nextPageToken": "page-2",
@@ -90,6 +98,12 @@ def test_google_event_list_paginates_and_maps_timed_all_day_and_cancelled() -> N
         "all-day",
     ]
     assert events[1].start is None
+    assert events[0].recurring_event_id == "recurring-master"
+    assert isinstance(events[0].original_start_time, datetime)
+    assert events[0].original_start_time.isoformat() == "2026-10-25T02:30:00+02:00"
+    assert events[1].recurring_event_id == "recurring-master"
+    assert events[1].original_start_time is not None
+    assert events[0].external_event_id != events[1].external_event_id
     assert events[2].title == "Untitled event"
     assert events[2].all_day is True
     assert events[2].start is not None
@@ -97,3 +111,52 @@ def test_google_event_list_paginates_and_maps_timed_all_day_and_cancelled() -> N
     assert requests[0].url.params["singleEvents"] == "true"
     assert requests[0].url.params["showDeleted"] == "true"
     assert requests[1].url.params["pageToken"] == "page-2"
+
+
+def test_google_all_day_events_preserve_exclusive_calendar_dates_across_dst() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "id": "one-day",
+                        "status": "confirmed",
+                        "start": {"date": "2026-03-29"},
+                        "end": {"date": "2026-03-30"},
+                    },
+                    {
+                        "id": "multi-day",
+                        "status": "confirmed",
+                        "start": {"date": "2026-03-28"},
+                        "end": {"date": "2026-03-31"},
+                    },
+                ]
+            },
+        )
+
+    async def run() -> list[ExternalCalendarEvent]:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await GoogleCalendarProvider(client).list_events(
+                CalendarProviderConnection(
+                    connection_id="00000000-0000-0000-0000-000000000001",
+                    access_token="secret",
+                ),
+                calendar_id="primary",
+                time_min=datetime(2026, 3, 28, 23, tzinfo=UTC),
+                time_max=datetime(2026, 3, 29, 22, tzinfo=UTC),
+                timezone="Europe/Warsaw",
+            )
+
+    events = asyncio.run(run())
+
+    assert [event.all_day for event in events] == [True, True]
+    assert events[0].start is not None and events[0].end is not None
+    assert events[0].start.date() == date(2026, 3, 29)
+    assert events[0].end.date() == date(2026, 3, 30)
+    assert (
+        events[0].end.astimezone(UTC) - events[0].start.astimezone(UTC)
+    ).total_seconds() == 23 * 3600
+    assert events[1].start is not None and events[1].end is not None
+    assert events[1].start.date() == date(2026, 3, 28)
+    assert events[1].end.date() == date(2026, 3, 31)

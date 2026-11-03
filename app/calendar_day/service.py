@@ -124,7 +124,13 @@ class CalendarDayReadService:
                 .order_by(CalendarConnection.id)
             )
         )
-        events, errors, attempted, succeeded = await self._external_events(
+        (
+            events,
+            errors,
+            loaded_calendars,
+            attempted,
+            succeeded,
+        ) = await self._external_events(
             connections=connections,
             day_start=day_start,
             day_end=day_end,
@@ -136,7 +142,7 @@ class CalendarDayReadService:
             day_end=day_end,
             events=events,
             errors=errors,
-            external_data_complete=(attempted == succeeded),
+            loaded_calendars=loaded_calendars,
         )
         sync_status = _sync_status(
             connections=connections,
@@ -166,15 +172,22 @@ class CalendarDayReadService:
         day_end: datetime,
         timezone: str,
     ) -> tuple[
-        list[tuple[uuid.UUID, ExternalCalendarEvent]], list[CalendarDayError], int, int
+        list[tuple[uuid.UUID, ExternalCalendarEvent]],
+        list[CalendarDayError],
+        set[tuple[uuid.UUID, str]],
+        int,
+        int,
     ]:
         events: list[tuple[uuid.UUID, ExternalCalendarEvent]] = []
         errors: list[CalendarDayError] = []
+        loaded_calendars: set[tuple[uuid.UUID, str]] = set()
         attempted = 0
         succeeded = 0
         for connection in connections:
             calendars = selected_day_view_calendars(connection)
             attempted += len(calendars)
+            if not calendars:
+                continue
             if not CALENDAR_READ_SCOPES.intersection(connection.scopes):
                 errors.append(
                     CalendarDayError(
@@ -234,6 +247,7 @@ class CalendarDayReadService:
                     )
                     continue
                 succeeded += 1
+                loaded_calendars.add((connection.id, calendar.external_calendar_id))
                 events.extend(
                     (connection.id, event)
                     for event in listed
@@ -245,7 +259,7 @@ class CalendarDayReadService:
                         and event.start < day_end
                     )
                 )
-        return events, errors, attempted, succeeded
+        return events, errors, loaded_calendars, attempted, succeeded
 
     def _merge_items(
         self,
@@ -255,7 +269,7 @@ class CalendarDayReadService:
         day_end: datetime,
         events: Iterable[tuple[uuid.UUID, ExternalCalendarEvent]],
         errors: list[CalendarDayError],
-        external_data_complete: bool,
+        loaded_calendars: set[tuple[uuid.UUID, str]],
     ) -> list[CalendarDayItem]:
         rows = list(
             self._session.execute(
@@ -288,7 +302,7 @@ class CalendarDayReadService:
             )
             if event.status == "cancelled":
                 if linked_row is not None:
-                    scheduled, _plan, _task, _mapping, _connection = linked_row
+                    scheduled, plan, task, _mapping, _connection = linked_row
                     merged_session_ids.add(scheduled.id)
                     errors.append(
                         CalendarDayError(
@@ -297,6 +311,14 @@ class CalendarDayReadService:
                             connection_id=connection_id,
                             calendar_id=event.calendar_id,
                             scheduled_session_id=scheduled.id,
+                        )
+                    )
+                    items.append(
+                        _attention_item(
+                            scheduled,
+                            plan,
+                            task,
+                            status="external_event_cancelled",
                         )
                     )
                 continue
@@ -341,19 +363,45 @@ class CalendarDayReadService:
                         scheduled_session_id=scheduled.id,
                     )
                 )
-                continue
-            if mapping is not None and external_data_complete:
-                # Preserve a locally known applied session if Google omitted it,
-                # but expose that the association could not be verified.
-                errors.append(
-                    CalendarDayError(
-                        code="mapped_event_not_returned",
-                        message="Mapped Google Calendar event was not returned.",
-                        connection_id=mapping.calendar_connection_id,
-                        calendar_id=mapping.calendar_id,
-                        scheduled_session_id=scheduled.id,
+                items.append(
+                    _attention_item(
+                        scheduled,
+                        plan,
+                        task,
+                        status="externally_deleted",
                     )
                 )
+                continue
+            if mapping is not None:
+                calendar_loaded = (
+                    mapping.calendar_connection_id,
+                    mapping.calendar_id,
+                ) in loaded_calendars
+                if calendar_loaded:
+                    errors.append(
+                        CalendarDayError(
+                            code="mapped_event_not_returned",
+                            message=(
+                                "Mapped Google Calendar event was not returned "
+                                "for this day."
+                            ),
+                            connection_id=mapping.calendar_connection_id,
+                            calendar_id=mapping.calendar_id,
+                            scheduled_session_id=scheduled.id,
+                        )
+                    )
+                    attention_status = "mapped_event_not_returned"
+                else:
+                    attention_status = "unverified"
+                items.append(
+                    _attention_item(
+                        scheduled,
+                        plan,
+                        task,
+                        status=attention_status,
+                    )
+                )
+                continue
             items.append(
                 CalendarDayItem(
                     id=f"session:{scheduled.id}",
@@ -379,6 +427,26 @@ def _session_link(
         task_id=task.id if task is not None else scheduled.task_id,
         plan_status=plan.status,
         session_status=scheduled.status,
+    )
+
+
+def _attention_item(
+    scheduled: ScheduledSession,
+    plan: SchedulePlan,
+    task: Task | None,
+    *,
+    status: str,
+) -> CalendarDayItem:
+    return CalendarDayItem(
+        id=f"session:{scheduled.id}",
+        source=CalendarDaySource.ai_calendar,
+        kind=CalendarDayKind.needs_attention,
+        title=task.title if task is not None else scheduled.title,
+        start=scheduled.start,
+        end=scheduled.end,
+        all_day=False,
+        status=status,
+        scheduled_session=_session_link(scheduled, plan, task),
     )
 
 
@@ -409,6 +477,8 @@ def _sync_status(
 ) -> CalendarDaySyncStatus:
     if not connections:
         return CalendarDaySyncStatus.not_connected
+    if attempted == 0:
+        return CalendarDaySyncStatus.no_calendars_selected
     if any(error.code == "reauthorization_required" for error in errors):
         if succeeded == 0:
             return CalendarDaySyncStatus.reauthorization_required

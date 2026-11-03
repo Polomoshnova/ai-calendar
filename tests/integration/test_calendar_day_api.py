@@ -2,6 +2,7 @@ import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import pytest
 from cryptography.fernet import Fernet
@@ -43,6 +44,7 @@ class FakeProvider:
         self.events: dict[str, list[ExternalCalendarEvent]] = {}
         self.failures: set[str] = set()
         self.calls: list[str] = []
+        self.connection_calls: list[uuid.UUID] = []
 
     async def list_events(
         self,
@@ -52,6 +54,7 @@ class FakeProvider:
         **_kwargs: object,
     ) -> list[ExternalCalendarEvent]:
         self.calls.append(calendar_id)
+        self.connection_calls.append(_connection.connection_id)
         if calendar_id in self.failures:
             raise CalendarUnavailableError("Google Calendar is unavailable")
         return self.events.get(calendar_id, [])
@@ -233,11 +236,29 @@ def test_partial_failure_preserves_local_data_and_skips_unselected_calendar(
         session_status=ScheduledSessionStatus.confirmed,
         title="Local task",
     )
+    mapped_on_secondary, _ = add_session(
+        db_session,
+        user,
+        plan_status=SchedulePlanStatus.applied,
+        session_status=ScheduledSessionStatus.applied,
+        title="Secondary mapped task",
+    )
     connection.selections.append(
         CalendarSelection(
             external_calendar_id="secondary",
             display_name="Secondary",
             include_in_availability=True,
+        )
+    )
+    db_session.add(
+        CalendarEventMapping(
+            scheduled_session=mapped_on_secondary,
+            calendar_connection=connection,
+            provider=CalendarProviderName.google,
+            provider_account_id="owner@example.com",
+            calendar_id="secondary",
+            external_event_id="missing-on-successful-calendar",
+            sync_status=SyncStatus.synced,
         )
     )
     db_session.commit()
@@ -259,10 +280,18 @@ def test_partial_failure_preserves_local_data_and_skips_unselected_calendar(
     assert payload["sync_state"]["status"] == "partial"
     assert payload["sync_state"]["partial"] is True
     assert payload["sync_state"]["errors"][0]["code"] == "calendar_provider_unavailable"
+    assert payload["sync_state"]["errors"][1]["code"] == "mapped_event_not_returned"
     assert {item["id"] for item in payload["items"]} == {
         f"session:{scheduled.id}",
+        f"session:{mapped_on_secondary.id}",
         f"google:{connection.id}:secondary:external",
     }
+    mapped_item = next(
+        item
+        for item in payload["items"]
+        if item["id"] == f"session:{mapped_on_secondary.id}"
+    )
+    assert mapped_item["status"] == "mapped_event_not_returned"
     assert provider.calls == ["primary", "secondary"]
 
 
@@ -305,7 +334,9 @@ def test_cancelled_mapped_event_is_reported_without_busy_item(
 
     payload = response.json()
     assert response.status_code == 200
-    assert payload["items"] == []
+    assert len(payload["items"]) == 1
+    assert payload["items"][0]["kind"] == "needs_attention"
+    assert payload["items"][0]["status"] == "external_event_cancelled"
     assert payload["sync_state"]["status"] == "partial"
     assert payload["sync_state"]["errors"][0]["code"] == "external_event_cancelled"
 
@@ -324,6 +355,296 @@ def test_missing_scope_requires_reauthorization_without_provider_call(
     assert response.status_code == 200
     assert response.json()["sync_state"]["status"] == "reauthorization_required"
     assert provider.calls == []
+
+
+def test_missing_mapped_event_is_attention_not_confirmed_busy_item(
+    client: TestClient,
+    db_session: Session,
+    user: User,
+    calendar_setup: tuple[CalendarConnection, FakeProvider],
+) -> None:
+    connection, provider = calendar_setup
+    applied, _ = add_session(
+        db_session,
+        user,
+        plan_status=SchedulePlanStatus.applied,
+        session_status=ScheduledSessionStatus.applied,
+        title="Moved or missing task",
+    )
+    db_session.add(
+        CalendarEventMapping(
+            scheduled_session=applied,
+            calendar_connection=connection,
+            provider=CalendarProviderName.google,
+            provider_account_id="owner@example.com",
+            calendar_id="primary",
+            external_event_id="not-returned",
+            sync_status=SyncStatus.synced,
+        )
+    )
+    db_session.commit()
+    provider.events["primary"] = []
+
+    response = client.get("/api/v1/calendar/day", params={"date": "2026-11-03"})
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert len(payload["items"]) == 1
+    assert payload["items"][0]["kind"] == "needs_attention"
+    assert payload["items"][0]["status"] == "mapped_event_not_returned"
+    assert payload["items"][0]["scheduled_session"]["session_id"] == str(applied.id)
+    assert payload["sync_state"]["errors"][0]["code"] == "mapped_event_not_returned"
+    assert "deleted" not in payload["sync_state"]["errors"][0]["message"].lower()
+
+
+def test_mapped_session_is_unverified_when_its_calendar_failed(
+    client: TestClient,
+    db_session: Session,
+    user: User,
+    calendar_setup: tuple[CalendarConnection, FakeProvider],
+) -> None:
+    connection, provider = calendar_setup
+    applied, _ = add_session(
+        db_session,
+        user,
+        plan_status=SchedulePlanStatus.applied,
+        session_status=ScheduledSessionStatus.applied,
+        title="Unverified task",
+    )
+    db_session.add(
+        CalendarEventMapping(
+            scheduled_session=applied,
+            calendar_connection=connection,
+            provider=CalendarProviderName.google,
+            provider_account_id="owner@example.com",
+            calendar_id="primary",
+            external_event_id="unverified",
+            sync_status=SyncStatus.synced,
+        )
+    )
+    db_session.commit()
+    provider.failures.add("primary")
+
+    response = client.get("/api/v1/calendar/day", params={"date": "2026-11-03"})
+
+    payload = response.json()
+    assert payload["items"][0]["kind"] == "needs_attention"
+    assert payload["items"][0]["status"] == "unverified"
+    assert payload["sync_state"]["status"] == "error"
+    assert all(
+        error["code"] != "external_event_missing"
+        for error in payload["sync_state"]["errors"]
+    )
+
+
+@pytest.mark.parametrize("selection_mode", ["missing", "disabled"])
+def test_connection_without_selected_calendars_has_explicit_state(
+    client: TestClient,
+    db_session: Session,
+    calendar_setup: tuple[CalendarConnection, FakeProvider],
+    selection_mode: str,
+) -> None:
+    connection, provider = calendar_setup
+    if selection_mode == "missing":
+        connection.selections.clear()
+    else:
+        for selection in connection.selections:
+            selection.include_in_availability = False
+    db_session.commit()
+
+    response = client.get("/api/v1/calendar/day", params={"date": "2026-11-03"})
+
+    assert response.json()["sync_state"]["status"] == "no_calendars_selected"
+    assert provider.calls == []
+
+
+def test_no_connection_has_not_connected_state(
+    client: TestClient,
+    db_session: Session,
+    calendar_setup: tuple[CalendarConnection, FakeProvider],
+) -> None:
+    connection, provider = calendar_setup
+    db_session.delete(connection)
+    db_session.commit()
+
+    response = client.get("/api/v1/calendar/day", params={"date": "2026-11-03"})
+
+    assert response.json()["sync_state"]["status"] == "not_connected"
+    assert provider.calls == []
+
+
+def test_dev_identity_ignores_query_and_header_and_filters_other_owner(
+    client: TestClient,
+    db_session: Session,
+    user: User,
+    calendar_setup: tuple[CalendarConnection, FakeProvider],
+) -> None:
+    own_connection, provider = calendar_setup
+    own_session, _ = add_session(
+        db_session,
+        user,
+        plan_status=SchedulePlanStatus.confirmed,
+        session_status=ScheduledSessionStatus.confirmed,
+        title="Owner task",
+    )
+    other = User(email="other-calendar-owner@example.com", timezone="UTC")
+    db_session.add(other)
+    db_session.flush()
+    other_connection = CalendarConnection(
+        user_id=other.id,
+        provider=CalendarProviderName.google,
+        provider_account_id="other@example.com",
+        access_token_encrypted=own_connection.access_token_encrypted,
+        status=CalendarConnectionStatus.active,
+        scopes=["https://www.googleapis.com/auth/calendar.readonly"],
+        selections=[
+            CalendarSelection(
+                external_calendar_id="other-primary",
+                display_name="Other primary",
+                include_in_availability=True,
+            )
+        ],
+    )
+    db_session.add(other_connection)
+    other_session, _ = add_session(
+        db_session,
+        other,
+        plan_status=SchedulePlanStatus.confirmed,
+        session_status=ScheduledSessionStatus.confirmed,
+        title="Other private task",
+    )
+    db_session.commit()
+
+    response = client.get(
+        "/api/v1/calendar/day",
+        params={"date": "2026-11-03", "user_id": str(other.id)},
+        headers={"X-User-Id": str(other.id)},
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert {item["scheduled_session"]["session_id"] for item in payload["items"]} == {
+        str(own_session.id)
+    }
+    assert all(
+        item["scheduled_session"]["session_id"] != str(other_session.id)
+        for item in payload["items"]
+    )
+    assert provider.connection_calls == [own_connection.id]
+    assert other_connection.id not in provider.connection_calls
+    assert "access-token" not in response.text
+
+
+def test_missing_or_unknown_dev_user_configuration_is_closed(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    calendar_setup: tuple[CalendarConnection, FakeProvider],
+) -> None:
+    _connection, provider = calendar_setup
+    monkeypatch.delenv("CALENDAR_DAY_DEV_USER_EMAIL", raising=False)
+    get_settings.cache_clear()
+    missing = client.get("/api/v1/calendar/day", params={"date": "2026-11-03"})
+    assert missing.status_code == 404
+
+    monkeypatch.setenv("CALENDAR_DAY_DEV_USER_EMAIL", "unknown@example.com")
+    get_settings.cache_clear()
+    unknown = client.get("/api/v1/calendar/day", params={"date": "2026-11-03"})
+    assert unknown.status_code == 404
+    assert provider.calls == []
+
+
+def test_warsaw_fallback_keeps_both_repeated_hour_instances(
+    client: TestClient,
+    calendar_setup: tuple[CalendarConnection, FakeProvider],
+) -> None:
+    _connection, provider = calendar_setup
+    provider.events["primary"] = [
+        ExternalCalendarEvent(
+            external_event_id="first-0230",
+            calendar_id="primary",
+            title="First 02:30",
+            start=datetime.fromisoformat("2026-10-25T02:30:00+02:00"),
+            end=datetime.fromisoformat("2026-10-25T02:45:00+02:00"),
+            recurring_event_id="master",
+        ),
+        ExternalCalendarEvent(
+            external_event_id="second-0230",
+            calendar_id="primary",
+            title="Second 02:30",
+            start=datetime.fromisoformat("2026-10-25T02:30:00+01:00"),
+            end=datetime.fromisoformat("2026-10-25T02:45:00+01:00"),
+            recurring_event_id="master",
+        ),
+    ]
+
+    response = client.get("/api/v1/calendar/day", params={"date": "2026-10-25"})
+
+    payload = response.json()
+    assert payload["day_start"] == "2026-10-24T22:00:00Z"
+    assert payload["day_end"] == "2026-10-25T23:00:00Z"
+    assert [item["title"] for item in payload["items"]] == [
+        "First 02:30",
+        "Second 02:30",
+    ]
+    assert payload["items"][0]["start"] != payload["items"][1]["start"]
+
+
+def test_warsaw_spring_forward_and_all_day_overlap_semantics(
+    client: TestClient,
+    calendar_setup: tuple[CalendarConnection, FakeProvider],
+) -> None:
+    _connection, provider = calendar_setup
+    zone = ZoneInfo("Europe/Warsaw")
+    provider.events["primary"] = [
+        ExternalCalendarEvent(
+            external_event_id="before-shift",
+            calendar_id="primary",
+            title="Before shift",
+            start=datetime.fromisoformat("2026-03-29T01:30:00+01:00"),
+            end=datetime.fromisoformat("2026-03-29T01:45:00+01:00"),
+        ),
+        ExternalCalendarEvent(
+            external_event_id="after-shift",
+            calendar_id="primary",
+            title="After shift",
+            start=datetime.fromisoformat("2026-03-29T03:15:00+02:00"),
+            end=datetime.fromisoformat("2026-03-29T03:30:00+02:00"),
+        ),
+        ExternalCalendarEvent(
+            external_event_id="one-day",
+            calendar_id="primary",
+            title="One day",
+            start=datetime(2026, 3, 29, tzinfo=zone),
+            end=datetime(2026, 3, 30, tzinfo=zone),
+            all_day=True,
+        ),
+        ExternalCalendarEvent(
+            external_event_id="multi-day",
+            calendar_id="primary",
+            title="Multi day",
+            start=datetime(2026, 3, 28, tzinfo=zone),
+            end=datetime(2026, 3, 31, tzinfo=zone),
+            all_day=True,
+        ),
+    ]
+
+    response = client.get("/api/v1/calendar/day", params={"date": "2026-03-29"})
+
+    payload = response.json()
+    assert payload["day_start"] == "2026-03-28T23:00:00Z"
+    assert payload["day_end"] == "2026-03-29T22:00:00Z"
+    assert {item["title"] for item in payload["items"]} == {
+        "Before shift",
+        "After shift",
+        "One day",
+        "Multi day",
+    }
+    one_day = next(item for item in payload["items"] if item["title"] == "One day")
+    assert one_day["all_day"] is True
+    assert (
+        datetime.fromisoformat(one_day["end"])
+        - datetime.fromisoformat(one_day["start"])
+    ).total_seconds() == 23 * 3600
 
 
 def test_overlap_boundaries_and_hidden_session_lifecycle_states(
@@ -389,7 +710,15 @@ def test_overlap_boundaries_and_hidden_session_lifecycle_states(
 
     payload = response.json()
     assert response.status_code == 200
-    assert [item["title"] for item in payload["items"]] == ["Cross midnight"]
+    assert {item["title"] for item in payload["items"]} == {
+        "Cross midnight",
+        "Externally deleted task",
+    }
+    deleted_item = next(
+        item for item in payload["items"] if item["title"] == "Externally deleted task"
+    )
+    assert deleted_item["kind"] == "needs_attention"
+    assert deleted_item["status"] == "externally_deleted"
     assert all(
         item["scheduled_session"] is None
         or item["scheduled_session"]["session_id"] != str(proposed.id)

@@ -19,6 +19,7 @@ class CalendarDaySource(StrEnum):
 class CalendarDayKind(StrEnum):
     event = "event"
     scheduled_session = "scheduled_session"
+    needs_attention = "needs_attention"
 
 
 class CalendarDaySyncStatus(StrEnum):
@@ -26,6 +27,7 @@ class CalendarDaySyncStatus(StrEnum):
     partial = "partial"
     error = "error"
     not_connected = "not_connected"
+    no_calendars_selected = "no_calendars_selected"
     reauthorization_required = "reauthorization_required"
 
 
