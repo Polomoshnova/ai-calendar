@@ -12,6 +12,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
     func,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -113,6 +114,9 @@ class CalendarSelection(Base):
     display_name: Mapped[str] = mapped_column(String(500))
     timezone: Mapped[str | None] = mapped_column(String(64))
     primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    include_in_day_view: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false()
+    )
     include_in_availability: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

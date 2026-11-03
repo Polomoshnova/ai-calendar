@@ -80,12 +80,11 @@ def local_day_bounds(value: date, timezone: str) -> tuple[datetime, datetime]:
 def selected_day_view_calendars(
     connection: CalendarConnection,
 ) -> list[CalendarSelection]:
-    """Temporary MVP policy, isolated for the future visibility preference."""
     return sorted(
         (
             selection
             for selection in connection.selections
-            if selection.include_in_availability
+            if selection.include_in_day_view
         ),
         key=lambda item: item.external_calendar_id,
     )
@@ -136,6 +135,11 @@ class CalendarDayReadService:
             day_end=day_end,
             timezone=user.timezone,
         )
+        visible_calendars = {
+            (connection.id, selection.external_calendar_id)
+            for connection in connections
+            for selection in selected_day_view_calendars(connection)
+        }
         warnings: list[CalendarDayError] = []
         items = self._merge_items(
             user_id=user.id,
@@ -144,6 +148,7 @@ class CalendarDayReadService:
             events=events,
             warnings=warnings,
             loaded_calendars=loaded_calendars,
+            visible_calendars=visible_calendars,
         )
         sync_status = _sync_status(
             connections=connections,
@@ -272,6 +277,7 @@ class CalendarDayReadService:
         events: Iterable[tuple[uuid.UUID, ExternalCalendarEvent]],
         warnings: list[CalendarDayError],
         loaded_calendars: set[tuple[uuid.UUID, str]],
+        visible_calendars: set[tuple[uuid.UUID, str]],
     ) -> list[CalendarDayItem]:
         rows = list(
             self._session.execute(
@@ -289,6 +295,15 @@ class CalendarDayReadService:
             row = cast(TimelineSessionRow, tuple(raw_row))
             scheduled, _plan, _task, mapping, connection = row
             if scheduled.status not in DAY_VIEW_SESSION_STATUSES:
+                continue
+            if (
+                mapping is not None
+                and (
+                    mapping.calendar_connection_id,
+                    mapping.calendar_id,
+                )
+                not in visible_calendars
+            ):
                 continue
             visible_rows.append(row)
             if mapping is not None and connection is not None:

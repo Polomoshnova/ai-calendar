@@ -7,10 +7,12 @@ from zoneinfo import ZoneInfo
 import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
+from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from app.calendar_integration.errors import CalendarUnavailableError
 from app.calendar_integration.models import (
+    CalendarBusyResult,
     CalendarProviderConnection,
     ExternalCalendarEvent,
 )
@@ -45,6 +47,7 @@ class FakeProvider:
         self.failures: set[str] = set()
         self.calls: list[str] = []
         self.connection_calls: list[uuid.UUID] = []
+        self.busy_calendar_ids: list[list[str]] = []
 
     async def list_events(
         self,
@@ -58,6 +61,24 @@ class FakeProvider:
         if calendar_id in self.failures:
             raise CalendarUnavailableError("Google Calendar is unavailable")
         return self.events.get(calendar_id, [])
+
+    async def query_busy_intervals(
+        self,
+        _connection: CalendarProviderConnection,
+        *,
+        calendar_ids: list[str],
+        time_min: datetime,
+        time_max: datetime,
+        timezone: str,
+    ) -> CalendarBusyResult:
+        self.busy_calendar_ids.append(calendar_ids)
+        return CalendarBusyResult(
+            time_min=time_min,
+            time_max=time_max,
+            timezone=timezone,
+            intervals=[],
+            errors=[],
+        )
 
 
 @pytest.fixture(autouse=True)
@@ -89,11 +110,13 @@ def calendar_setup(
                 external_calendar_id="primary",
                 display_name="Primary",
                 primary=True,
+                include_in_day_view=True,
                 include_in_availability=True,
             ),
             CalendarSelection(
                 external_calendar_id="ignored",
                 display_name="Ignored",
+                include_in_day_view=False,
                 include_in_availability=False,
             ),
         ],
@@ -156,6 +179,61 @@ def add_session(
     session.add(plan)
     session.commit()
     return scheduled, task
+
+
+@pytest.mark.parametrize(
+    ("include_in_day_view", "include_in_availability"),
+    [(True, True), (True, False), (False, True), (False, False)],
+)
+def test_visibility_and_availability_are_independent(
+    client: TestClient,
+    db_session: Session,
+    user: User,
+    calendar_setup: tuple[CalendarConnection, FakeProvider],
+    include_in_day_view: bool,
+    include_in_availability: bool,
+) -> None:
+    connection, provider = calendar_setup
+    primary = next(
+        item for item in connection.selections if item.external_calendar_id == "primary"
+    )
+    primary.include_in_day_view = include_in_day_view
+    primary.include_in_availability = include_in_availability
+    db_session.commit()
+    provider.events["primary"] = [
+        ExternalCalendarEvent(
+            external_event_id="matrix-event",
+            calendar_id="primary",
+            title="Matrix event",
+            start=DAY,
+            end=DAY + timedelta(hours=1),
+        )
+    ]
+
+    day_response = client.get("/api/v1/calendar/day", params={"date": "2026-11-03"})
+    busy_response = client.post(
+        f"/internal/api/calendar/connections/{connection.id}/free-busy",
+        params={"user_id": str(user.id)},
+        json={
+            "time_min": "2026-11-03T00:00:00Z",
+            "time_max": "2026-11-04T00:00:00Z",
+            "timezone": "UTC",
+        },
+    )
+
+    assert day_response.status_code == 200
+    assert bool(day_response.json()["items"]) is include_in_day_view
+    assert ("primary" in provider.calls) is include_in_day_view
+    if include_in_day_view:
+        assert day_response.json()["sync_state"]["status"] == "fresh"
+    else:
+        assert day_response.json()["sync_state"]["status"] == ("no_calendars_selected")
+    if include_in_availability:
+        assert busy_response.status_code == 200
+        assert provider.busy_calendar_ids == [["primary"]]
+    else:
+        assert busy_response.status_code == 400
+        assert provider.busy_calendar_ids == []
 
 
 def test_day_merges_mapped_session_and_keeps_confirmed_local_session(
@@ -248,6 +326,7 @@ def test_partial_failure_preserves_local_data_and_skips_unselected_calendar(
         CalendarSelection(
             external_calendar_id="secondary",
             display_name="Secondary",
+            include_in_day_view=True,
             include_in_availability=True,
         )
     )
@@ -362,6 +441,7 @@ def test_partial_loading_keeps_consistency_warning_separate(
         CalendarSelection(
             external_calendar_id="secondary",
             display_name="Secondary",
+            include_in_day_view=True,
             include_in_availability=True,
         )
     )
@@ -500,6 +580,109 @@ def test_mapped_session_is_unverified_when_its_calendar_failed(
     )
 
 
+def test_hidden_mapped_session_is_not_returned_or_reported(
+    client: TestClient,
+    db_session: Session,
+    user: User,
+    calendar_setup: tuple[CalendarConnection, FakeProvider],
+) -> None:
+    connection, provider = calendar_setup
+    applied, _ = add_session(
+        db_session,
+        user,
+        plan_status=SchedulePlanStatus.applied,
+        session_status=ScheduledSessionStatus.applied,
+        title="Hidden mapped task",
+    )
+    db_session.add(
+        CalendarEventMapping(
+            scheduled_session=applied,
+            calendar_connection=connection,
+            provider=CalendarProviderName.google,
+            provider_account_id="owner@example.com",
+            calendar_id="ignored",
+            external_event_id="shared-event-id",
+            sync_status=SyncStatus.synced,
+        )
+    )
+    db_session.commit()
+    provider.events["primary"] = [
+        ExternalCalendarEvent(
+            external_event_id="shared-event-id",
+            calendar_id="primary",
+            title="Visible event",
+            start=DAY,
+            end=DAY + timedelta(hours=1),
+        )
+    ]
+
+    response = client.get("/api/v1/calendar/day", params={"date": "2026-11-03"})
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["sync_state"]["status"] == "fresh"
+    assert len(payload["items"]) == 1
+    assert payload["items"][0]["title"] == "Visible event"
+    assert payload["items"][0]["scheduled_session"] is None
+    assert payload["warnings"] == []
+    assert provider.calls == ["primary"]
+
+
+def test_calendar_day_query_count_does_not_grow_per_connection(
+    client: TestClient,
+    db_session: Session,
+    user: User,
+    calendar_setup: tuple[CalendarConnection, FakeProvider],
+) -> None:
+    connection, _provider = calendar_setup
+
+    def count_selects() -> int:
+        query_count = 0
+
+        def listener(
+            _connection: object,
+            _cursor: object,
+            statement: str,
+            _parameters: object,
+            _context: object,
+            _executemany: object,
+        ) -> None:
+            nonlocal query_count
+            if statement.lstrip().upper().startswith("SELECT"):
+                query_count += 1
+
+        event.listen(db_session.get_bind(), "before_cursor_execute", listener)
+        try:
+            response = client.get("/api/v1/calendar/day", params={"date": "2026-11-03"})
+            assert response.status_code == 200
+        finally:
+            event.remove(db_session.get_bind(), "before_cursor_execute", listener)
+        return query_count
+
+    baseline = count_selects()
+    second = CalendarConnection(
+        user_id=user.id,
+        provider=CalendarProviderName.google,
+        provider_account_id="second-account",
+        access_token_encrypted=connection.access_token_encrypted,
+        status=CalendarConnectionStatus.active,
+        scopes=["https://www.googleapis.com/auth/calendar.readonly"],
+        selections=[
+            CalendarSelection(
+                external_calendar_id="second-primary",
+                display_name="Second primary",
+                primary=True,
+                include_in_day_view=False,
+                include_in_availability=True,
+            )
+        ],
+    )
+    db_session.add(second)
+    db_session.commit()
+
+    assert count_selects() == baseline
+
+
 @pytest.mark.parametrize("selection_mode", ["missing", "disabled"])
 def test_connection_without_selected_calendars_has_explicit_state(
     client: TestClient,
@@ -512,7 +695,7 @@ def test_connection_without_selected_calendars_has_explicit_state(
         connection.selections.clear()
     else:
         for selection in connection.selections:
-            selection.include_in_availability = False
+            selection.include_in_day_view = False
     db_session.commit()
 
     response = client.get("/api/v1/calendar/day", params={"date": "2026-11-03"})
@@ -565,6 +748,7 @@ def test_dev_identity_ignores_query_and_header_and_filters_other_owner(
             CalendarSelection(
                 external_calendar_id="other-primary",
                 display_name="Other primary",
+                include_in_day_view=True,
                 include_in_availability=True,
             )
         ],
