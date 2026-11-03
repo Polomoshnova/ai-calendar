@@ -30,6 +30,7 @@ from app.planner.schemas import (
     PlannerResponse,
     PlannerSession,
 )
+from app.planner.session_query import timeline_sessions_statement
 from app.schedule_plans.models import SchedulePlanStatus
 from app.schedule_plans.repository import RESERVING_PLAN_STATUSES
 
@@ -130,34 +131,11 @@ class PlannerReadService:
         tomorrow_start: datetime,
         upcoming_end: datetime,
     ) -> tuple[list[PlannerSession], list[PlannerSession]]:
-        statement = (
-            select(
-                ScheduledSession,
-                SchedulePlan,
-                Task,
-                CalendarEventMapping,
-                CalendarConnection,
-            )
-            .join(SchedulePlan, SchedulePlan.id == ScheduledSession.plan_id)
-            .outerjoin(
-                Task,
-                (Task.id == ScheduledSession.task_id) & (Task.user_id == user_id),
-            )
-            .outerjoin(
-                CalendarEventMapping,
-                CalendarEventMapping.scheduled_session_id == ScheduledSession.id,
-            )
-            .outerjoin(
-                CalendarConnection,
-                CalendarConnection.id == CalendarEventMapping.calendar_connection_id,
-            )
-            .where(
-                SchedulePlan.user_id == user_id,
-                SchedulePlan.status.in_(RESERVING_PLAN_STATUSES),
-                ScheduledSession.start < upcoming_end,
-                ScheduledSession.end > today_start,
-            )
-            .order_by(ScheduledSession.start, ScheduledSession.id)
+        statement = timeline_sessions_statement(
+            user_id=user_id,
+            start=today_start,
+            end=upcoming_end,
+            plan_statuses=RESERVING_PLAN_STATUSES,
         )
         today: list[PlannerSession] = []
         upcoming: list[PlannerSession] = []

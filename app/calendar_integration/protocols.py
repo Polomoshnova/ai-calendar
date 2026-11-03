@@ -9,6 +9,7 @@ from app.calendar_integration.models import (
     CalendarEventSnapshot,
     CalendarProviderConnection,
     ExternalCalendar,
+    ExternalCalendarEvent,
 )
 
 
@@ -41,6 +42,16 @@ class CalendarProvider(Protocol):
         calendar_id: str,
         external_event_id: str,
     ) -> CalendarEventSnapshot: ...
+
+    async def list_events(
+        self,
+        connection: CalendarProviderConnection,
+        *,
+        calendar_id: str,
+        time_min: datetime,
+        time_max: datetime,
+        timezone: str,
+    ) -> list[ExternalCalendarEvent]: ...
 
 
 class TokenCipher(Protocol):

@@ -1,7 +1,8 @@
 import asyncio
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Any
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 import httpx
 from pydantic import ValidationError
@@ -24,6 +25,7 @@ from app.calendar_integration.models import (
     CalendarProviderConnection,
     CalendarQueryError,
     ExternalCalendar,
+    ExternalCalendarEvent,
 )
 
 CALENDAR_LIST_ENDPOINT = "https://www.googleapis.com/calendar/v3/users/me/calendarList"
@@ -33,6 +35,34 @@ EVENTS_ENDPOINT = (
 )
 FREE_BUSY_BATCH_SIZE = 50
 MAX_ATTEMPTS = 3
+
+
+def _event_interval(
+    payload: dict[str, Any], zone: ZoneInfo
+) -> tuple[datetime | None, datetime | None, bool]:
+    if payload.get("status") == "cancelled" and (
+        "start" not in payload or "end" not in payload
+    ):
+        return None, None, False
+    start_data = payload["start"]
+    end_data = payload["end"]
+    if not isinstance(start_data, dict) or not isinstance(end_data, dict):
+        raise TypeError("event boundaries must be objects")
+    if "dateTime" in start_data and "dateTime" in end_data:
+        return (
+            datetime.fromisoformat(str(start_data["dateTime"])),
+            datetime.fromisoformat(str(end_data["dateTime"])),
+            False,
+        )
+    if "date" in start_data and "date" in end_data:
+        return (
+            datetime.combine(
+                date.fromisoformat(str(start_data["date"])), time.min, zone
+            ),
+            datetime.combine(date.fromisoformat(str(end_data["date"])), time.min, zone),
+            True,
+        )
+    raise KeyError("event boundaries")
 
 
 class GoogleCalendarProvider:
@@ -304,6 +334,75 @@ class GoogleCalendarProvider:
             provider_updated_at=updated,
             provider_status=status,
         )
+
+    async def list_events(
+        self,
+        connection: CalendarProviderConnection,
+        *,
+        calendar_id: str,
+        time_min: datetime,
+        time_max: datetime,
+        timezone: str,
+    ) -> list[ExternalCalendarEvent]:
+        events: list[ExternalCalendarEvent] = []
+        page_token: str | None = None
+        zone = ZoneInfo(timezone)
+        while True:
+            params: dict[str, Any] = {
+                "timeMin": time_min.isoformat(),
+                "timeMax": time_max.isoformat(),
+                "timeZone": timezone,
+                "singleEvents": "true",
+                "showDeleted": "true",
+                "maxResults": 2500,
+            }
+            if page_token is not None:
+                params["pageToken"] = page_token
+            payload = await self._request(
+                "GET",
+                EVENTS_ENDPOINT.format(calendar_id=quote(calendar_id, safe="")),
+                connection=connection,
+                params=params,
+            )
+            items = payload.get("items", [])
+            if not isinstance(items, list):
+                raise CalendarProviderError(
+                    "Google Calendar returned a malformed event list"
+                )
+            for item in items:
+                if not isinstance(item, dict) or not item.get("id"):
+                    raise CalendarProviderError(
+                        "Google Calendar returned a malformed event"
+                    )
+                try:
+                    status = str(item.get("status")) if item.get("status") else None
+                    start, end, all_day = _event_interval(item, zone)
+                    updated = (
+                        datetime.fromisoformat(str(item["updated"]))
+                        if item.get("updated")
+                        else None
+                    )
+                    events.append(
+                        ExternalCalendarEvent(
+                            external_event_id=str(item["id"]),
+                            calendar_id=calendar_id,
+                            title=str(item.get("summary") or "Untitled event"),
+                            start=start,
+                            end=end,
+                            all_day=all_day,
+                            status=status,
+                            etag=str(item["etag"]) if item.get("etag") else None,
+                            provider_updated_at=updated,
+                        )
+                    )
+                except (KeyError, TypeError, ValueError, ValidationError) as exc:
+                    raise CalendarProviderError(
+                        "Google Calendar returned a malformed event"
+                    ) from exc
+            next_page = payload.get("nextPageToken")
+            if not next_page:
+                return events
+            page_token = str(next_page)
 
     async def _request(
         self,

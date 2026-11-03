@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     )
     calendar_token_encryption_key: SecretStr | None = None
     google_calendar_timeout_seconds: float = 15.0
+    calendar_day_dev_user_email: str | None = None
     schedule_plan_revalidation_ttl_seconds: int = 120
     schedule_plan_revalidation_padding_minutes: int = 15
 
