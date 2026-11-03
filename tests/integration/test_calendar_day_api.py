@@ -587,10 +587,6 @@ def test_hidden_mapped_session_is_not_returned_or_reported(
     calendar_setup: tuple[CalendarConnection, FakeProvider],
 ) -> None:
     connection, provider = calendar_setup
-    primary = next(
-        item for item in connection.selections if item.external_calendar_id == "primary"
-    )
-    primary.include_in_day_view = False
     applied, _ = add_session(
         db_session,
         user,
@@ -604,21 +600,32 @@ def test_hidden_mapped_session_is_not_returned_or_reported(
             calendar_connection=connection,
             provider=CalendarProviderName.google,
             provider_account_id="owner@example.com",
-            calendar_id="primary",
-            external_event_id="hidden-event",
+            calendar_id="ignored",
+            external_event_id="shared-event-id",
             sync_status=SyncStatus.synced,
         )
     )
     db_session.commit()
+    provider.events["primary"] = [
+        ExternalCalendarEvent(
+            external_event_id="shared-event-id",
+            calendar_id="primary",
+            title="Visible event",
+            start=DAY,
+            end=DAY + timedelta(hours=1),
+        )
+    ]
 
     response = client.get("/api/v1/calendar/day", params={"date": "2026-11-03"})
 
     payload = response.json()
     assert response.status_code == 200
-    assert payload["sync_state"]["status"] == "no_calendars_selected"
-    assert payload["items"] == []
+    assert payload["sync_state"]["status"] == "fresh"
+    assert len(payload["items"]) == 1
+    assert payload["items"][0]["title"] == "Visible event"
+    assert payload["items"][0]["scheduled_session"] is None
     assert payload["warnings"] == []
-    assert provider.calls == []
+    assert provider.calls == ["primary"]
 
 
 def test_calendar_day_query_count_does_not_grow_per_connection(

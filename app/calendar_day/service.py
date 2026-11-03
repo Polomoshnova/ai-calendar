@@ -296,6 +296,15 @@ class CalendarDayReadService:
             scheduled, _plan, _task, mapping, connection = row
             if scheduled.status not in DAY_VIEW_SESSION_STATUSES:
                 continue
+            if (
+                mapping is not None
+                and (
+                    mapping.calendar_connection_id,
+                    mapping.calendar_id,
+                )
+                not in visible_calendars
+            ):
+                continue
             visible_rows.append(row)
             if mapping is not None and connection is not None:
                 sessions_by_identity[
@@ -355,15 +364,6 @@ class CalendarDayReadService:
 
         for scheduled, plan, task, mapping, _connection in visible_rows:
             if scheduled.id in merged_session_ids:
-                continue
-            if (
-                mapping is not None
-                and (
-                    mapping.calendar_connection_id,
-                    mapping.calendar_id,
-                )
-                not in visible_calendars
-            ):
                 continue
             if (
                 mapping is not None
