@@ -72,4 +72,5 @@ class CalendarDayResponse(StrictModel):
     day_end: datetime
     generated_at: datetime
     sync_state: CalendarDaySyncState
+    warnings: list[CalendarDayError]
     items: list[CalendarDayItem]

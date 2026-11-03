@@ -206,6 +206,7 @@ def test_day_merges_mapped_session_and_keeps_confirmed_local_session(
     assert response.status_code == 200
     payload = response.json()
     assert payload["sync_state"] == {"status": "fresh", "partial": False, "errors": []}
+    assert payload["warnings"] == []
     assert len(payload["items"]) == 2
     google_item = next(
         item for item in payload["items"] if item["source"] == "google_calendar"
@@ -280,7 +281,9 @@ def test_partial_failure_preserves_local_data_and_skips_unselected_calendar(
     assert payload["sync_state"]["status"] == "partial"
     assert payload["sync_state"]["partial"] is True
     assert payload["sync_state"]["errors"][0]["code"] == "calendar_provider_unavailable"
-    assert payload["sync_state"]["errors"][1]["code"] == "mapped_event_not_returned"
+    assert [warning["code"] for warning in payload["warnings"]] == [
+        "mapped_event_not_returned"
+    ]
     assert {item["id"] for item in payload["items"]} == {
         f"session:{scheduled.id}",
         f"session:{mapped_on_secondary.id}",
@@ -337,8 +340,66 @@ def test_cancelled_mapped_event_is_reported_without_busy_item(
     assert len(payload["items"]) == 1
     assert payload["items"][0]["kind"] == "needs_attention"
     assert payload["items"][0]["status"] == "external_event_cancelled"
+    assert payload["sync_state"] == {"status": "fresh", "partial": False, "errors": []}
+    assert payload["warnings"][0]["code"] == "external_event_cancelled"
+
+
+def test_partial_loading_keeps_consistency_warning_separate(
+    client: TestClient,
+    db_session: Session,
+    user: User,
+    calendar_setup: tuple[CalendarConnection, FakeProvider],
+) -> None:
+    connection, provider = calendar_setup
+    applied, _ = add_session(
+        db_session,
+        user,
+        plan_status=SchedulePlanStatus.applied,
+        session_status=ScheduledSessionStatus.applied,
+        title="Cancelled task",
+    )
+    connection.selections.append(
+        CalendarSelection(
+            external_calendar_id="secondary",
+            display_name="Secondary",
+            include_in_availability=True,
+        )
+    )
+    db_session.add(
+        CalendarEventMapping(
+            scheduled_session=applied,
+            calendar_connection=connection,
+            provider=CalendarProviderName.google,
+            provider_account_id="owner@example.com",
+            calendar_id="primary",
+            external_event_id="cancelled-event",
+            sync_status=SyncStatus.synced,
+        )
+    )
+    db_session.commit()
+    provider.events["primary"] = [
+        ExternalCalendarEvent(
+            external_event_id="cancelled-event",
+            calendar_id="primary",
+            title="Cancelled task",
+            status="cancelled",
+        )
+    ]
+    provider.failures.add("secondary")
+
+    response = client.get("/api/v1/calendar/day", params={"date": "2026-11-03"})
+
+    payload = response.json()
+    assert response.status_code == 200
     assert payload["sync_state"]["status"] == "partial"
-    assert payload["sync_state"]["errors"][0]["code"] == "external_event_cancelled"
+    assert payload["sync_state"]["partial"] is True
+    assert [error["code"] for error in payload["sync_state"]["errors"]] == [
+        "calendar_provider_unavailable"
+    ]
+    assert [warning["code"] for warning in payload["warnings"]] == [
+        "external_event_cancelled"
+    ]
+    assert payload["items"][0]["kind"] == "needs_attention"
 
 
 def test_missing_scope_requires_reauthorization_without_provider_call(
@@ -393,8 +454,9 @@ def test_missing_mapped_event_is_attention_not_confirmed_busy_item(
     assert payload["items"][0]["kind"] == "needs_attention"
     assert payload["items"][0]["status"] == "mapped_event_not_returned"
     assert payload["items"][0]["scheduled_session"]["session_id"] == str(applied.id)
-    assert payload["sync_state"]["errors"][0]["code"] == "mapped_event_not_returned"
-    assert "deleted" not in payload["sync_state"]["errors"][0]["message"].lower()
+    assert payload["sync_state"] == {"status": "fresh", "partial": False, "errors": []}
+    assert payload["warnings"][0]["code"] == "mapped_event_not_returned"
+    assert "deleted" not in payload["warnings"][0]["message"].lower()
 
 
 def test_mapped_session_is_unverified_when_its_calendar_failed(
@@ -431,6 +493,7 @@ def test_mapped_session_is_unverified_when_its_calendar_failed(
     assert payload["items"][0]["kind"] == "needs_attention"
     assert payload["items"][0]["status"] == "unverified"
     assert payload["sync_state"]["status"] == "error"
+    assert payload["warnings"] == []
     assert all(
         error["code"] != "external_event_missing"
         for error in payload["sync_state"]["errors"]
@@ -455,6 +518,7 @@ def test_connection_without_selected_calendars_has_explicit_state(
     response = client.get("/api/v1/calendar/day", params={"date": "2026-11-03"})
 
     assert response.json()["sync_state"]["status"] == "no_calendars_selected"
+    assert response.json()["warnings"] == []
     assert provider.calls == []
 
 
@@ -724,7 +788,7 @@ def test_overlap_boundaries_and_hidden_session_lifecycle_states(
         or item["scheduled_session"]["session_id"] != str(proposed.id)
         for item in payload["items"]
     )
-    assert payload["sync_state"]["errors"][0]["code"] == "external_event_missing"
+    assert payload["warnings"][0]["code"] == "external_event_missing"
 
 
 def test_invalid_date_and_production_isolation(

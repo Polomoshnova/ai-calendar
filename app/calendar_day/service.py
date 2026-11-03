@@ -126,7 +126,7 @@ class CalendarDayReadService:
         )
         (
             events,
-            errors,
+            provider_errors,
             loaded_calendars,
             attempted,
             succeeded,
@@ -136,19 +136,20 @@ class CalendarDayReadService:
             day_end=day_end,
             timezone=user.timezone,
         )
+        warnings: list[CalendarDayError] = []
         items = self._merge_items(
             user_id=user.id,
             day_start=day_start,
             day_end=day_end,
             events=events,
-            errors=errors,
+            warnings=warnings,
             loaded_calendars=loaded_calendars,
         )
         sync_status = _sync_status(
             connections=connections,
             attempted=attempted,
             succeeded=succeeded,
-            errors=errors,
+            errors=provider_errors,
         )
         return CalendarDayResponse(
             date=selected_date,
@@ -159,8 +160,9 @@ class CalendarDayReadService:
             sync_state=CalendarDaySyncState(
                 status=sync_status,
                 partial=sync_status is CalendarDaySyncStatus.partial,
-                errors=errors,
+                errors=provider_errors,
             ),
+            warnings=warnings,
             items=sorted(items, key=lambda item: (item.start, item.end, item.id)),
         )
 
@@ -268,7 +270,7 @@ class CalendarDayReadService:
         day_start: datetime,
         day_end: datetime,
         events: Iterable[tuple[uuid.UUID, ExternalCalendarEvent]],
-        errors: list[CalendarDayError],
+        warnings: list[CalendarDayError],
         loaded_calendars: set[tuple[uuid.UUID, str]],
     ) -> list[CalendarDayItem]:
         rows = list(
@@ -304,7 +306,7 @@ class CalendarDayReadService:
                 if linked_row is not None:
                     scheduled, plan, task, _mapping, _connection = linked_row
                     merged_session_ids.add(scheduled.id)
-                    errors.append(
+                    warnings.append(
                         CalendarDayError(
                             code="external_event_cancelled",
                             message="Applied Google Calendar event is cancelled.",
@@ -352,7 +354,7 @@ class CalendarDayReadService:
                 mapping is not None
                 and mapping.sync_status is SyncStatus.externally_deleted
             ):
-                errors.append(
+                warnings.append(
                     CalendarDayError(
                         code="external_event_missing",
                         message=(
@@ -378,7 +380,7 @@ class CalendarDayReadService:
                     mapping.calendar_id,
                 ) in loaded_calendars
                 if calendar_loaded:
-                    errors.append(
+                    warnings.append(
                         CalendarDayError(
                             code="mapped_event_not_returned",
                             message=(
