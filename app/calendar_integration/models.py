@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Self
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -75,6 +75,32 @@ class CalendarEventSnapshot(StrictModel):
             _require_aware(self.end)
             if self.start.astimezone(UTC) >= self.end.astimezone(UTC):
                 raise ValueError("event start must be before end")
+        return self
+
+
+class ExternalCalendarEvent(StrictModel):
+    external_event_id: str = Field(min_length=1)
+    calendar_id: str = Field(min_length=1)
+    title: str
+    start: datetime | None = None
+    end: datetime | None = None
+    all_day: bool = False
+    status: str | None = None
+    etag: str | None = None
+    provider_updated_at: datetime | None = None
+    recurring_event_id: str | None = None
+    original_start_time: datetime | date | None = None
+
+    @model_validator(mode="after")
+    def validate_event(self) -> Self:
+        if self.status == "cancelled" and self.start is None and self.end is None:
+            return self
+        if self.start is None or self.end is None:
+            raise ValueError("present calendar events require start and end")
+        _require_aware(self.start)
+        _require_aware(self.end)
+        if self.start.astimezone(UTC) >= self.end.astimezone(UTC):
+            raise ValueError("event start must be before end")
         return self
 
 
