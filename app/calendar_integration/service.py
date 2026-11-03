@@ -322,6 +322,28 @@ async def replace_calendar_selections(
     )
 
 
+def update_calendar_visibility(
+    session: Session,
+    connection: CalendarConnection,
+    *,
+    calendar_id: str,
+    include_in_day_view: bool,
+) -> CalendarSelection:
+    selection = next(
+        (
+            item
+            for item in connection.selections
+            if item.external_calendar_id == calendar_id
+        ),
+        None,
+    )
+    if selection is None:
+        raise CalendarSelectionError("Unknown calendar for connection")
+    selection.include_in_day_view = include_in_day_view
+    session.commit()
+    return selection
+
+
 async def query_connection_busy(
     session: Session,
     connection: CalendarConnection,
@@ -428,6 +450,7 @@ def _sync_calendar_selections(
                 display_name=calendar.name,
                 timezone=calendar.timezone,
                 primary=calendar.primary,
+                include_in_day_view=first_sync and calendar.primary,
                 include_in_availability=first_sync and calendar.primary,
             )
             session.add(selection)

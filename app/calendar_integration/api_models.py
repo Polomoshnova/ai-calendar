@@ -55,11 +55,17 @@ class CalendarSelectionRequest(StrictModel):
     calendar_ids: list[str]
 
 
+class CalendarVisibilityRequest(StrictModel):
+    calendar_id: str
+    include_in_day_view: bool
+
+
 class CalendarSelectionItem(StrictModel):
     id: str
     name: str
     timezone: str | None
     primary: bool
+    include_in_day_view: bool
     include_in_availability: bool
 
 

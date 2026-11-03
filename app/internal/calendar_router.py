@@ -15,6 +15,7 @@ from app.calendar_integration.api_models import (
     CalendarSelectionItem,
     CalendarSelectionRequest,
     CalendarSelectionsResponse,
+    CalendarVisibilityRequest,
     ConnectionListResponse,
     ConnectionStatusResponse,
     FreeBusyRequest,
@@ -53,9 +54,10 @@ from app.calendar_integration.service import (
     query_connection_busy,
     replace_calendar_selections,
     store_google_connection,
+    update_calendar_visibility,
 )
 from app.core.config import Settings, get_settings
-from app.internal.dependencies import InternalToolsEnabled
+from app.internal.dependencies import DevCalendarUser, InternalToolsEnabled
 from app.models import CalendarConnection
 from app.schemas.scheduling import SchedulePreviewResponse
 from app.services.scheduling import generate_schedule_preview
@@ -254,10 +256,41 @@ async def selections(
                     name=item.display_name,
                     timezone=item.timezone,
                     primary=item.primary,
+                    include_in_day_view=item.include_in_day_view,
                     include_in_availability=item.include_in_availability,
                 )
                 for item in records
             ]
+        )
+    except CalendarIntegrationError as exc:
+        raise _http_error(exc) from exc
+
+
+@router.patch(
+    "/connections/{connection_id}/visibility",
+    response_model=CalendarSelectionItem,
+)
+def visibility(
+    connection_id: uuid.UUID,
+    data: CalendarVisibilityRequest,
+    session: DatabaseSession,
+    user: DevCalendarUser,
+) -> CalendarSelectionItem:
+    try:
+        connection = owned_connection(session, connection_id, user.id)
+        item = update_calendar_visibility(
+            session,
+            connection,
+            calendar_id=data.calendar_id,
+            include_in_day_view=data.include_in_day_view,
+        )
+        return CalendarSelectionItem(
+            id=item.external_calendar_id,
+            name=item.display_name,
+            timezone=item.timezone,
+            primary=item.primary,
+            include_in_day_view=item.include_in_day_view,
+            include_in_availability=item.include_in_availability,
         )
     except CalendarIntegrationError as exc:
         raise _http_error(exc) from exc
