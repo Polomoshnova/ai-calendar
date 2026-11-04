@@ -6,6 +6,7 @@ h1 { margin: .2rem 0 .4rem; font-size: clamp(2rem, 4vw, 3.25rem); }
 h2, h3, p { margin-top: 0; }
 .eyebrow { margin: 0; color: #b8d7ca; font-size: .75rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
 .subtitle { max-width: 42rem; margin-bottom: 0; color: #d9e7e0; }
+.header-link { color: #fff; font-weight: 700; }
 .controls { min-width: 18rem; align-self: end; }
 .controls label { display: block; margin-bottom: .35rem; font-size: .8rem; font-weight: 700; }
 select { width: 100%; padding: .65rem .75rem; border: 1px solid #94afa4; border-radius: .35rem; background: white; color: #17211b; }
