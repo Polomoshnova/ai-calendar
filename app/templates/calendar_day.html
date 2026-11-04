@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="/internal/static/calendar_day.css">
+  </head>
+  <body data-initial-date="{{ initial_date }}" data-timezone="{{ timezone }}">
+    <header class="day-header">
+      <div class="brand-row">
+        <div>
+          <p class="eyebrow">Development-only · read-only</p>
+          <p class="product-name">AI Calendar</p>
+        </div>
+        <a class="planner-link" href="/internal/planner">Planner</a>
+      </div>
+      <div class="date-row">
+        <div>
+          <p class="day-kicker">Your day</p>
+          <h1 id="selected-date">Loading date…</h1>
+        </div>
+        <button type="button" id="today" class="today-button">Today</button>
+      </div>
+      <nav class="day-navigation" aria-label="Calendar day navigation">
+        <button type="button" id="previous-day" aria-label="Previous day">← <span>Previous</span></button>
+        <button type="button" id="next-day" aria-label="Next day"><span>Next</span> →</button>
+      </nav>
+    </header>
+
+    <main id="calendar-main">
+      <div id="calendar-status" class="status" role="status" aria-live="polite">
+        <span class="spinner" aria-hidden="true"></span>
+        Loading calendar…
+      </div>
+      <div id="calendar-content" hidden></div>
+    </main>
+
+    <script type="module" src="/internal/static/calendar_day.js"></script>
+  </body>
+</html>

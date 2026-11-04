@@ -4,8 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/ui/*.test.js",
-    "lint": "node --check app/static/planner_api.js && node --check app/static/planner_view.js && node --check app/static/planner.js",
-    "typecheck": "node --check app/static/planner_api.js && node --check app/static/planner_view.js && node --check app/static/planner.js",
-    "build": "node --check app/static/planner_api.js && node --check app/static/planner_view.js && node --check app/static/planner.js"
+    "lint": "node --check app/static/planner_api.js && node --check app/static/planner_view.js && node --check app/static/planner.js && node --check app/static/calendar_day_api.js && node --check app/static/calendar_day_layout.js && node --check app/static/calendar_day_view.js && node --check app/static/calendar_day.js",
+    "typecheck": "npm run lint",
+    "build": "npm run lint"
   }
 }

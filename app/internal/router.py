@@ -1,5 +1,7 @@
 import uuid
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import FileResponse
@@ -8,7 +10,7 @@ from sqlalchemy import select
 
 from app.api.dependencies import DatabaseSession
 from app.domain.preferences import serialize_working_hours
-from app.internal.dependencies import InternalToolsEnabled
+from app.internal.dependencies import DevCalendarUser, InternalToolsEnabled
 from app.internal.export import build_export_payload, contains_secret_fields
 from app.internal.scenario_loader import (
     InvalidScenarioError,
@@ -65,6 +67,19 @@ def planner(request: Request, _enabled: InternalToolsEnabled) -> object:
     )
 
 
+@router.get("/calendar-day")
+def calendar_day(request: Request, user: DevCalendarUser) -> object:
+    return templates.TemplateResponse(
+        request=request,
+        name="calendar_day.html",
+        context={
+            "title": "Calendar · AI Calendar",
+            "initial_date": datetime.now(ZoneInfo(user.timezone)).date().isoformat(),
+            "timezone": user.timezone,
+        },
+    )
+
+
 @router.get("/static/{filename}")
 def internal_static(filename: str, _enabled: InternalToolsEnabled) -> FileResponse:
     if filename not in {
@@ -72,6 +87,11 @@ def internal_static(filename: str, _enabled: InternalToolsEnabled) -> FileRespon
         "planner.js",
         "planner_api.js",
         "planner_view.js",
+        "calendar_day.css",
+        "calendar_day.js",
+        "calendar_day_api.js",
+        "calendar_day_layout.js",
+        "calendar_day_view.js",
         "scheduling_lab.css",
         "scheduling_lab.js",
     }:
